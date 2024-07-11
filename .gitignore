@@ -1,0 +1,6 @@
+__pycache__
+data/*
+old_dataset/*
+plots/*
+results/*
+logs/*
