@@ -1,3 +1,9 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[1]:
+
+
 import warnings
 import os
 import pickle
@@ -20,17 +26,20 @@ from sklearn.metrics import confusion_matrix
 # warnings.filterwarnings("ignore")  # supress warnings from matplotlib
 
 
+# In[2]:
+
+
 # set variables
 use_seed = False
 threshold = 1  # possible values are: 1, 2, 5, 10
 # set the number of epochs you want to train the network (default = 300)
-epochs = 300 # 400
+epochs = 100
 save_fig = True  # set True to save the plots
 
 global use_trainable_out
 use_trainable_out = False
 global use_trainable_tc
-use_trainable_tc = False
+use_trainable_tc = True
 global use_dropout
 use_dropout = False
 global batch_size
@@ -39,13 +48,19 @@ global lr
 lr = 0.0015
 
 
+# In[3]:
+
+
 # create folder to safe plots later
 if save_fig:
-    path = './plots'
+    path = '../plots'
     isExist = os.path.exists(path)
 
     if not isExist:
         os.makedirs(path)
+
+
+# In[4]:
 
 
 # check for available GPU and distribute work
@@ -80,6 +95,9 @@ else:
         print("No GPU detected. Running on CPU.")
 
 
+# In[5]:
+
+
 # use fixed seed for reproducable results
 if use_seed:
     seed = 42  # "Answer to the Ultimate Question of Life, the Universe, and Everything"
@@ -91,11 +109,20 @@ else:
     print("Shuffle data randomly")
 
 
+# In[6]:
+
+
 dtype = torch.float
+
+
+# In[7]:
 
 
 letters = ['Space', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
            'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
+
+
+# In[8]:
 
 
 def load_and_extract(params, file_name, taxels=None, letter_written=letters):
@@ -161,6 +188,9 @@ def load_and_extract(params, file_name, taxels=None, letter_written=letters):
     return ds_train, ds_test, ds_validation, labels, selected_chans, data_steps
 
 
+# In[9]:
+
+
 def run_snn(inputs, layers):
 
     if use_trainable_out and use_trainable_tc:
@@ -210,6 +240,9 @@ def run_snn(inputs, layers):
     return s_out_rec, other_recs, layers_update
 
 
+# In[10]:
+
+
 def load_layers(file, map_location, requires_grad=True, variable=False):
 
     if variable:
@@ -221,6 +254,114 @@ def load_layers(file, map_location, requires_grad=True, variable=False):
         for ii in lays:
             ii.requires_grad = requires_grad
     return lays
+
+
+# In[11]:
+
+
+def build_and_train(params, ds_train, ds_test, epochs=epochs):
+
+    global nb_input_copies
+    # Num of spiking neurons used to encode each channel
+    nb_input_copies = params['nb_input_copies']
+
+    # Network parameters
+    global nb_inputs
+    nb_inputs = nb_channels*nb_input_copies
+    global nb_outputs
+    nb_outputs = len(np.unique(labels))
+    global nb_hidden
+    nb_hidden = 450
+    global nb_steps
+    nb_steps = data_steps
+
+    tau_mem = params['tau_mem']  # ms
+    tau_syn = tau_mem/params['tau_ratio']
+    
+    if not use_trainable_tc:
+        global alpha
+        global beta
+    alpha = float(np.exp(-time_step/tau_syn))
+    beta = float(np.exp(-time_step/tau_mem)) # float(1/(0.06/time_step))
+    print("beta %f, time_step %f"%(beta, time_step))
+    fwd_weight_scale = params['fwd_weight_scale']
+    rec_weight_scale = fwd_weight_scale*params['weight_scale_factor']
+
+    # Spiking network
+    layers = []
+    
+    # recurrent layer
+    w1, v1 = recurrent_layer.create_layer(
+        nb_inputs, nb_hidden, fwd_weight_scale, rec_weight_scale)
+
+    # readout layer
+    w2 = feedforward_layer.create_layer(
+        nb_hidden, nb_outputs, fwd_weight_scale)
+    
+    if use_trainable_tc:
+        # time constants
+        alpha1, beta1 = trainable_time_constants.create_time_constants(
+            nb_hidden, alpha, beta, use_trainable_tc)
+
+        alpha2, beta2 = trainable_time_constants.create_time_constants(
+            nb_outputs, alpha, beta, use_trainable_tc)
+
+
+    layers.append(w1), layers.append(w2), layers.append(v1)
+    if use_trainable_tc:
+        layers.append(alpha1), layers.append(beta1), layers.append(alpha2), layers.append(beta2)
+
+    if use_trainable_out:
+        # include trainable output for readout layer (linear: y = out_scale * x + out_offset)
+        out_scale = torch.empty(
+            (nb_outputs),  device=device, dtype=dtype, requires_grad=True)
+        torch.nn.init.ones_(out_scale)
+        layers.append(out_scale)
+        out_offset = torch.empty(
+            (nb_outputs),  device=device, dtype=dtype, requires_grad=True)
+        torch.nn.init.zeros_(out_offset)
+        layers.append(out_offset)
+
+    layers_init = []
+    for ii in layers:
+        layers_init.append(ii.detach().clone())
+
+    if use_trainable_out and use_trainable_tc:
+        opt_parameters = [w1, w2, v1, alpha1, beta1, alpha2, beta2, out_scale, out_offset]
+    elif use_trainable_tc:
+        opt_parameters = [w1, w2, v1, alpha1, beta1, alpha2, beta2]
+    elif use_trainable_out:
+        opt_parameters = [w1, w2, v1, out_scale, out_offset]
+    else:
+        opt_parameters = [w1, w2, v1]
+
+    # a fixed learning rate is already defined within the train function, that's why here it is omitted
+    loss_hist, accs_hist, best_layers = train(
+        params, ds_train, lr=lr, nb_epochs=epochs, opt_parameters=opt_parameters, layers=layers, dataset_test=ds_test)
+
+    # best training and test at best training
+    acc_best_train = np.max(accs_hist[0])  # returns max value
+    acc_best_train = acc_best_train*100
+    idx_best_train = np.argmax(accs_hist[0])  # returns index of max value
+    acc_test_at_best_train = accs_hist[1][idx_best_train]*100
+
+    # best test and training at best test
+    acc_best_test = np.max(accs_hist[1])
+    acc_best_test = acc_best_test*100
+    idx_best_test = np.argmax(accs_hist[1])
+    acc_train_at_best_test = accs_hist[0][idx_best_test]*100
+
+    # TODO track time constants!!!
+    print("Final results: ")
+    print("Best training accuracy: {:.2f}% and according test accuracy: {:.2f}% at epoch: {}".format(
+        acc_best_train, acc_test_at_best_train, idx_best_train+1))
+    print("Best test accuracy: {:.2f}% and according train accuracy: {:.2f}% at epoch: {}".format(
+        acc_best_test, acc_train_at_best_test, idx_best_test+1))
+    print("------------------------------------------------------------------------------------\n")
+    return loss_hist, accs_hist, best_layers
+
+
+# In[12]:
 
 
 def train(params, dataset, lr=0.0015, nb_epochs=300, opt_parameters=None, layers=None, dataset_test=None):
@@ -388,106 +529,7 @@ def train(params, dataset, lr=0.0015, nb_epochs=300, opt_parameters=None, layers
     return loss_hist, accs_hist, best_acc_layers
 
 
-def build_and_train(params, ds_train, ds_test, epochs=epochs):
-
-    global nb_input_copies
-    # Num of spiking neurons used to encode each channel
-    nb_input_copies = params['nb_input_copies']
-
-    # Network parameters
-    global nb_inputs
-    nb_inputs = nb_channels*nb_input_copies
-    global nb_outputs
-    nb_outputs = len(np.unique(labels))
-    global nb_hidden
-    nb_hidden = 450
-    global nb_steps
-    nb_steps = data_steps
-
-    tau_mem = params['tau_mem']  # ms
-    tau_syn = tau_mem/params['tau_ratio']
-    
-    if not use_trainable_tc:
-        global alpha
-        global beta
-    alpha = float(np.exp(-time_step/tau_syn))
-    beta = float(np.exp(-time_step/tau_mem))
-
-    fwd_weight_scale = params['fwd_weight_scale']
-    rec_weight_scale = fwd_weight_scale*params['weight_scale_factor']
-
-    # Spiking network
-    layers = []
-    
-    # recurrent layer
-    w1, v1 = recurrent_layer.create_layer(
-        nb_inputs, nb_hidden, fwd_weight_scale, rec_weight_scale)
-
-    # readout layer
-    w2 = feedforward_layer.create_layer(
-        nb_hidden, nb_outputs, fwd_weight_scale)
-    
-    if use_trainable_tc:
-        # time constants
-        alpha1, beta1 = trainable_time_constants.create_time_constants(
-            nb_hidden, alpha, beta, use_trainable_tc)
-
-        alpha2, beta2 = trainable_time_constants.create_time_constants(
-            nb_outputs, alpha, beta, use_trainable_tc)
-
-
-    layers.append(w1), layers.append(w2), layers.append(v1)
-    if use_trainable_tc:
-        layers.append(alpha1), layers.append(beta1), layers.append(alpha2), layers.append(beta2)
-
-    if use_trainable_out:
-        # include trainable output for readout layer (linear: y = out_scale * x + out_offset)
-        out_scale = torch.empty(
-            (nb_outputs),  device=device, dtype=dtype, requires_grad=True)
-        torch.nn.init.ones_(out_scale)
-        layers.append(out_scale)
-        out_offset = torch.empty(
-            (nb_outputs),  device=device, dtype=dtype, requires_grad=True)
-        torch.nn.init.zeros_(out_offset)
-        layers.append(out_offset)
-
-    layers_init = []
-    for ii in layers:
-        layers_init.append(ii.detach().clone())
-
-    if use_trainable_out and use_trainable_tc:
-        opt_parameters = [w1, w2, v1, alpha1, beta1, alpha2, beta2, out_scale, out_offset]
-    elif use_trainable_tc:
-        opt_parameters = [w1, w2, v1, alpha1, beta1, alpha2, beta2]
-    elif use_trainable_out:
-        opt_parameters = [w1, w2, v1, out_scale, out_offset]
-    else:
-        opt_parameters = [w1, w2, v1]
-
-    # a fixed learning rate is already defined within the train function, that's why here it is omitted
-    loss_hist, accs_hist, best_layers = train(
-        params, ds_train, lr=lr, nb_epochs=epochs, opt_parameters=opt_parameters, layers=layers, dataset_test=ds_test)
-
-    # best training and test at best training
-    acc_best_train = np.max(accs_hist[0])  # returns max value
-    acc_best_train = acc_best_train*100
-    idx_best_train = np.argmax(accs_hist[0])  # returns index of max value
-    acc_test_at_best_train = accs_hist[1][idx_best_train]*100
-
-    # best test and training at best test
-    acc_best_test = np.max(accs_hist[1])
-    acc_best_test = acc_best_test*100
-    idx_best_test = np.argmax(accs_hist[1])
-    acc_train_at_best_test = accs_hist[0][idx_best_test]*100
-
-    # TODO track time constants!!!
-    print("Final results: ")
-    print("Best training accuracy: {:.2f}% and according test accuracy: {:.2f}% at epoch: {}".format(
-        acc_best_train, acc_test_at_best_train, idx_best_train+1))
-    print("Best test accuracy: {:.2f}% and according train accuracy: {:.2f}% at epoch: {}".format(
-        acc_best_test, acc_train_at_best_test, idx_best_test+1))
-    print("------------------------------------------------------------------------------------\n")
-    return loss_hist, accs_hist, best_layers
+# In[13]:
 
 
 def compute_classification_accuracy(params, dataset, layers=None):
@@ -523,13 +565,13 @@ def compute_classification_accuracy(params, dataset, layers=None):
         # print(len(top_k_values))
         # certainty = torch.diff(top_k_values, 1, 1)
         # print(certainty)
-        for batch_counter, batch in enumerate(m):
-            print(batch_counter)
-            print(batch.detach().cpu().numpy())
-            print(torch.topk(batch, 2).indices)
-            print(torch.topk(batch, 2))
-            values = torch.topk(batch, 2)
-            print(value[1].detach().cpu().numpy()- value[0].detach().cpu().numpy())
+        # for batch_counter, batch in enumerate(m):
+        #    print(batch_counter)
+        #    print(batch.detach().cpu().numpy())
+        #    print(torch.topk(batch, 2).indices)
+        #    print(torch.topk(batch, 2))
+        #    values = torch.topk(batch, 2)
+        #    <print(values[1].detach().cpu().numpy()- values[0].detach().cpu().numpy())
 
         # calculate certainty
         # two_winning = torch.topk(m, axis=1, 3).indices
@@ -540,6 +582,9 @@ def compute_classification_accuracy(params, dataset, layers=None):
         accs.append(tmp)
 
     return np.mean(accs)
+
+
+# In[14]:
 
 
 def ConfusionMatrix(dataset, save, layers=None, labels=letters):
@@ -591,16 +636,19 @@ def ConfusionMatrix(dataset, save, layers=None, labels=letters):
     plt.xticks(rotation=0)
     if save:
         if use_trainable_out:
-            plt.savefig("./plots/rsnn_1layers_train_tc_output_optimized_thr_" +
+            plt.savefig("../plots/rsnn_1layers_train_tc_output_optimized_thr_" +
                         str(threshold) + "_cm.png", dpi=300)
         else:
-            plt.savefig("./plots/rsnn_1layers_train_tc_thr_" +
+            plt.savefig("../plots/rsnn_1layers_train_tc_thr_" +
                         str(threshold) + "_cm.png", dpi=300)
     else:
         plt.show()
 
 
-def NetworkActivity(dataset, save, layers=None, labels=letters):
+# In[15]:
+
+
+def NetworkActivity(dataset, layers=None, labels=letters):
 
     generator = DataLoader(dataset, batch_size=batch_size,
                            shuffle=False, num_workers=2)
@@ -624,33 +672,38 @@ def NetworkActivity(dataset, save, layers=None, labels=letters):
             spks_out, recs, _ = run_snn(x_local, layers)
 
         # [mem_rec, spk_rec, mem_rec2, spk_rec2, out_rec]
-        _, spk_rec, _, spk_rec3, _ = recs
+        spk_rec, spk_rec3, _= recs
+        # s_out_rec, other_recs, layers_update
 
+    return spk_rec, spk_rec3, spks_out
+
+def PlotNetworkActivity(spk_rec, spk_rec3, spks_out, save, directory='plots'):
     nb_plt = 4
     gs = GridSpec(1, nb_plt)
-
+   
     # hidden layer
-    fig = plt.figure(figsize=(7, 3), dpi=150)
-    plt.title("Hidden layer 1")
+    fig_general_activity = plt.figure(figsize=(7, 3), dpi=150)
     for i in range(nb_plt):
         plt.subplot(gs[i])
+        tensor_array = spk_rec[i].detach().cpu().numpy().T
+        print(tensor_array.shape)
         plt.imshow(spk_rec[i].detach().cpu().numpy().T,
                    cmap=plt.cm.gray_r, origin="lower")
         if i == 0:
             plt.xlabel("Time")
             plt.ylabel("Units")
         sn.despine()
+    plt.title("Hidden layer 1")
     if save:
         if use_trainable_out:
-            plt.savefig("./plots/rsnn_1layers_train_tc_output" +
+            plt.savefig("../" + directory + "/rsnn_1layers_train_tc_output" +
                         "_thr_" + str(threshold) + "_rp_layer_1.png", dpi=300)
         else:
-            plt.savefig("./plots/rsnn_1layers_train_tc_thr_" +
+            plt.savefig("../" + directory + "/rsnn_1layers_train_tc_thr_" +
                         str(threshold) + "_rp_layer_1.png", dpi=300)
 
     # output layer
-    fig = plt.figure(figsize=(7, 3), dpi=150)
-    plt.title("Output layer")
+    fig_rasterplots = plt.figure(figsize=(7, 3), dpi=150)
     for i in range(nb_plt):
         plt.subplot(gs[i])
         plt.imshow(spks_out[i].detach().cpu().numpy().T,
@@ -659,24 +712,29 @@ def NetworkActivity(dataset, save, layers=None, labels=letters):
             plt.xlabel("Time")
             plt.ylabel("Units")
         sn.despine()
+    plt.title("Output layer")
     if save:
         if use_trainable_out:
-            plt.savefig("./plots/rsnn_1layers_train_tc_output" +
+            plt.savefig("../" + directory + "/rsnn_1layers_train_tc_output" +
                         "_thr_" + str(threshold) + "_rp_output_layer.png", dpi=300)
         else:
-            plt.savefig("./plots/rsnn_1layers_train_tc_thr_" +
+            plt.savefig("../" + directory + "/rsnn_1layers_train_tc_thr_" +
                         str(threshold) + "_rp_output_layer.png", dpi=300)
     else:
         plt.show()
+    return fig_general_activity, fig_rasterplots
+
+
+# In[16]:
 
 
 # Load data and parameters
-file_dir_data = './data/'
+file_dir_data = '../data/'
 file_type = 'data_braille_letters_th_'
 file_thr = str(threshold)
 file_name = file_dir_data + file_type + file_thr + '.pkl'
 
-file_dir_params = './parameters/'
+file_dir_params = '../parameters/'
 param_filename = 'parameters_th' + str(threshold) + '.txt'
 file_name_parameters = file_dir_params + param_filename
 params = {}
@@ -687,6 +745,15 @@ with open(file_name_parameters) as file:
             params[key] = int(value)
         else:
             params[key] = np.double(value)
+
+
+# In[17]:
+
+
+params
+
+
+# In[18]:
 
 
 class SurrGradSpike(torch.autograd.Function):
@@ -730,6 +797,9 @@ class SurrGradSpike(torch.autograd.Function):
 spike_fn = SurrGradSpike.apply
 
 
+# In[19]:
+
+
 class feedforward_layer:
     '''
     class to initialize and compute spiking feedforward layer
@@ -754,7 +824,9 @@ class feedforward_layer:
 
             new_syn = alpha*syn + input_activity[:,t]
             new_mem = (beta*mem + syn)*(1.0-rst_out)
-
+            # new_mem = (mem - torch.sign(mem)*beta) * (1.0-rst_out)
+            # new_mem = new_mem + syn*(1.0-rst_out)
+            
             mem_rec.append(mem)
             spk_rec.append(out)
 
@@ -781,6 +853,8 @@ class feedforward_layer:
 
             new_syn = torch.abs(alpha)*syn + input_activity[:,t]
             new_mem = (torch.abs(beta)*mem + syn)*(1.0-rst_out)
+            # new_mem = (mem - torch.sign(mem)*beta) * (1.0-rst_out)
+            # new_mem = new_mem + syn*(1.0-rst_out)
 
             mem_rec.append(mem)
             spk_rec.append(out)
@@ -806,10 +880,10 @@ class recurrent_layer:
         torch.nn.init.normal_(rec_layer, mean=0.0, std=rec_scale/np.sqrt(nb_inputs))
         return ff_layer,  rec_layer
     
-    def compute_activity(bs, nb_neurons, input_activity, layer, nb_steps):
-        syn = torch.zeros((bs,nb_neurons), device=device, dtype=dtype)
-        mem = torch.zeros((bs,nb_neurons), device=device, dtype=dtype)
-        out = torch.zeros((bs, nb_neurons), device=device, dtype=dtype)
+    def compute_activity(nb_input, nb_neurons, input_activity, layer, nb_steps):
+        syn = torch.zeros((nb_input,nb_neurons), device=device, dtype=dtype)
+        mem = torch.zeros((nb_input,nb_neurons), device=device, dtype=dtype)
+        out = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
         mem_rec = []
         spk_rec = []
 
@@ -823,7 +897,9 @@ class recurrent_layer:
 
             new_syn = alpha*syn + h1
             new_mem = (beta*mem + syn)*(1.0-rst)
-
+            # new_mem = (mem - torch.sign(mem)*beta) * (1.0-rst)
+            # new_mem = new_mem + syn*(1.0-rst)
+            
             mem_rec.append(mem)
             spk_rec.append(out)
         
@@ -835,10 +911,10 @@ class recurrent_layer:
         spk_rec = torch.stack(spk_rec,dim=1)
         return spk_rec, mem_rec
     
-    def compute_activity_tc(bs, nb_neurons, input_activity, layer, alpha, beta, nb_steps):
-        syn = torch.zeros((bs,nb_neurons), device=device, dtype=dtype)
-        mem = torch.zeros((bs,nb_neurons), device=device, dtype=dtype)
-        out = torch.zeros((bs, nb_neurons), device=device, dtype=dtype)
+    def compute_activity_tc(nb_input, nb_neurons, input_activity, layer, alpha, beta, nb_steps):
+        syn = torch.zeros((nb_input,nb_neurons), device=device, dtype=dtype)
+        mem = torch.zeros((nb_input,nb_neurons), device=device, dtype=dtype)
+        out = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
         mem_rec = []
         spk_rec = []
 
@@ -852,6 +928,8 @@ class recurrent_layer:
 
             new_syn = torch.abs(alpha)*syn + h1
             new_mem = (torch.abs(beta)*mem + syn)*(1.0-rst)
+            # new_mem = (mem - torch.sign(mem)*beta) * (1.0-rst)
+            # new_mem = new_mem + syn*(1.0-rst)
 
             mem_rec.append(mem)
             spk_rec.append(out)
@@ -877,11 +955,44 @@ class trainable_time_constants:
         torch.nn.init.normal_(
             beta, mean=beta_mean, std=beta_mean/10)
         return alpha, beta
-    
+
+
+# ### Train and test the network
+
+# In[20]:
+
 
 acc_train_list = []
 acc_test_list = []
 max_repetitions = 5
+# load data
+ds_train, ds_test, ds_validation, labels, nb_channels, data_steps = load_and_extract(
+    params, file_name, letter_written=letters)
+for repetition in range(max_repetitions):
+    if repetition == 0:
+        print("Number of training data %i" % len(ds_train))
+        print("Number of testing data %i" % len(ds_test))
+        print("Number of validation data %i" % len(ds_validation))
+        print("Number of outputs %i" % len(np.unique(labels)))
+        print("Number of timesteps %i" % data_steps)
+        print("Input duration %fs" % (data_steps*time_step))
+        print("---------------------------\n")
+
+
+
+
+# In[21]:
+
+
+nb_channels
+
+
+# In[ ]:
+
+
+acc_train_list = []
+acc_test_list = []
+max_repetitions = 1
 # load data
 ds_train, ds_test, ds_validation, labels, nb_channels, data_steps = load_and_extract(
     params, file_name, letter_written=letters)
@@ -923,8 +1034,17 @@ print("* Best: ", best_acc*100)
 print("*************************")
 
 
+# In[ ]:
+
+
 # save the best layer
-torch.save(very_best_layer, './model/best_model_th'+str(threshold)+'.pt')
+torch.save(very_best_layer, '../model/best_model_th'+str(threshold)+'.pt')
+
+
+# ### Lets plot the training curve and the confusion matrix
+
+# In[ ]:
+
 
 # calc mean and std
 acc_mean_train = np.mean(acc_train_list, axis=0)
@@ -933,7 +1053,7 @@ acc_mean_test = np.mean(acc_test_list, axis=0)
 acc_std_test = np.std(acc_test_list, axis=0)
 best_trial, best_val_idx = np.where(np.max(acc_test_list) == acc_test_list)
 best_trial, best_val_idx = best_trial[0], best_val_idx[0]
-plt.figure()
+fig1 = plt.figure()
 # plot best trial
 plt.plot(range(1, len(acc_train_list[best_trial])+1), 100*np.array(
     acc_train_list[best_trial]), color='blue', linestyle='dashed')
@@ -952,18 +1072,62 @@ plt.xlabel("Epoch")
 plt.ylabel("Accuracy (%)")
 plt.ylim((0, 105))
 plt.legend(["Training", "Test"], loc='lower right')
-if save_fig:
-    plt.savefig("./plots/rsnn_1layers_train_tc_thr_" +
+plt.savefig("../plots/rsnn_1layers_train_tc_thr_" +
                 str(threshold)+"_acc.png", dpi=300)
-else:
-    plt.show()
+plt.show()
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
 
 
 # plotting the confusion matrix
 ConfusionMatrix(ds_test, layers=very_best_layer, save=save_fig)
 
 
+# ### Lets create some raster plots
+
+# In[ ]:
+
+
 # plotting the network activity
-NetworkActivity(ds_test, layers=very_best_layer, save=save_fig)
+spk_rec, spk_rec3, spks_out = NetworkActivity(ds_test, layers=very_best_layer)
+PlotNetworkActivity(spk_rec, spk_rec3, spks_out, save=save_fig, directory='plots_ss')
+plt.savefig("../plots/rsnn_1layers_train_tc_thr_activity_linear" +
+                str(threshold)+"_acc.png", dpi=300)
+
+
+# In[ ]:
+
+
+tensor_array = spk_rec[0].detach().cpu().numpy().T
+
+
+
+# In[ ]:
+
+
+fig = plt.figure()
+for ta in range(tensor_array.shape[0]):
+    plt.plot(tensor_array[ta,:])
+    plt.savefig("../plots/rsnn_1layers_train_tc_thr_neuron_%i_linear"%(ta) +
+                str(threshold)+"_acc.png", dpi=300)    
+    plt.show()
+
+
+# In[ ]:
+
+
+tensor_array.shape
+
+
+# In[ ]:
+
+
 
 
