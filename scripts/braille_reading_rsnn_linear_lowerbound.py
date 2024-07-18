@@ -163,7 +163,7 @@ def load_and_extract(params, file_name, taxels=None, letter_written=letters):
 
     return ds_train, ds_test, ds_validation, labels, selected_chans, data_steps
 
-def update_refp(spk, ref_per_counter):
+def refp_update(spk, ref_per_counter):
     # print(h.shape)
     # print(ref_per_counter.shape)
      # Update refractory period counter
@@ -199,7 +199,7 @@ def run_snn(inputs, layers):
         spk_rec, mem_rec = recurrent_layer.compute_activity_tc(bs, nb_hidden, h1, v1, alpha1, beta1, nb_steps, refp_counter_recurr)
     else:
         spk_rec, mem_rec = recurrent_layer.compute_activity(bs, nb_hidden, h1, v1, nb_steps, refp_counter_recurr)
-    # refp_counter_recurr = update_refp(spk_rec, refp_counter_recurr)
+    # refp_counter_recurr = refp_update(spk_rec, refp_counter_recurr)
     
     # Readout layer
     h2 = torch.einsum("abc,cd->abd", (spk_rec, w2))
@@ -209,7 +209,7 @@ def run_snn(inputs, layers):
         s_out_rec, out_rec = feedforward_layer.compute_activity_tc(bs, nb_outputs, h2, alpha2, beta2, nb_steps, refp_counter_rout)
     else:
         s_out_rec, out_rec = feedforward_layer.compute_activity(bs, nb_outputs, h2, nb_steps, refp_counter_rout)
-    # refp_counter_rout = update_refp(s_out_rec, refp_counter_rout)
+    # refp_counter_rout = refp_update(s_out_rec, refp_counter_rout)
    
     
     if use_trainable_out:
@@ -221,6 +221,8 @@ def run_snn(inputs, layers):
 
     other_recs = [mem_rec, spk_rec, out_rec]
     layers_update = layers
+
+    print(f"rec spk: {torch.sum(spk_rec)}, out spk: {torch.sum(s_out_rec)}")
 
     return s_out_rec, other_recs, layers_update
 
@@ -399,6 +401,8 @@ def train(params, dataset, lr=0.0015, nb_epochs=300, opt_parameters=None, layers
     loss_hist = []
     accs_hist = [[], []]
     for e in range(nb_epochs):
+        
+        print(f"epoch: {e}")
         # learning rate decreases over epochs
         optimizer = torch.optim.Adamax(parameters, lr=lr, betas=(0.9, 0.995))
         # if e > nb_epochs/2:
@@ -428,10 +432,14 @@ def train(params, dataset, lr=0.0015, nb_epochs=300, opt_parameters=None, layers
             log_p_y = log_softmax_fn(m)
 
             # TODO change to loop!
+            # no regularizer
+            # reg_loss = 0.0
+
             # Here we can set up our regularizer loss
             # reg_loss = params['reg_spikes']*torch.mean(torch.sum(spks1,1)) # L1 loss on spikes per neuron (original)
             # L1 loss on total number of spikes (hidden layer 1)
             reg_loss = params['reg_spikes']*torch.mean(torch.sum(spk_rec, 1))
+
             # L1 loss on total number of spikes (output layer)
             # reg_loss += params['reg_spikes']*torch.mean(torch.sum(spks_out, 1))
             # print("L1: ", reg_loss)
@@ -439,6 +447,7 @@ def train(params, dataset, lr=0.0015, nb_epochs=300, opt_parameters=None, layers
             # L2 loss on spikes per neuron (hidden layer 1)
             reg_loss += params['reg_neurons'] * \
                 torch.mean(torch.sum(torch.sum(spk_rec, dim=0), dim=0)**2)
+            
             # L2 loss on spikes per neuron (output layer)
             # reg_loss += params['reg_neurons'] * \
             #     torch.mean(torch.sum(torch.sum(spks_out, dim=0), dim=0)**2)
@@ -769,7 +778,7 @@ def mem_update(alpha, syn, h1, mem, beta, rst_out, ref_per_counter):
     new_mem = (mem - torch.sign(mem)*beta) * (1.0-rst_out)  # membrane decay
     new_mem = new_mem + (syn * mask) * (1.0-rst_out)  # membrane integration
     new_mem[new_mem < -0.2] = -0.2  # lower boarder for mem pot
-    ref_per_counter = update_refp(rst_out, ref_per_counter)
+    ref_per_counter = refp_update(rst_out, ref_per_counter)
     return new_syn, new_mem, ref_per_counter
 
 class feedforward_layer:
