@@ -23,7 +23,7 @@ from sklearn.metrics import confusion_matrix
 use_seed = False
 threshold = 1  # possible values are: 1, 2, 5, 10
 # set the number of epochs you want to train the network (default = 300)
-epochs = 10
+epochs = 20
 save_fig = True  # set True to save the plots
 
 global use_trainable_out
@@ -109,11 +109,11 @@ def load_and_extract(params, file_name, taxels=None, letter_written=letters):
     # Set refractory periond in time steps
     global ref_per_steps
     if ref_per_ms > time_step:
-        ref_per_steps = ref_per_ms/time_step # ms
+        ref_per_steps = ref_per_ms/(time_step*1000) # ms
     else:
         print("!!!!!!!!!!!!!!!!! Refractory period %f should be larger or equal to time step %f"%(ref_per_ms,time_step))
         ref_per_steps = 1
-        
+    # ref_per_steps = 0.0
     # Extract data
     data = []
     labels = []
@@ -163,12 +163,13 @@ def load_and_extract(params, file_name, taxels=None, letter_written=letters):
 
     return ds_train, ds_test, ds_validation, labels, selected_chans, data_steps
 
-def update_refp(h, ref_per_counter):
+def update_refp(spk, ref_per_counter):
     # print(h.shape)
     # print(ref_per_counter.shape)
      # Update refractory period counter
     ref_per_counter[ref_per_counter>0] -= 1 # Wehe we decrease our refractory period counter if it is larger than 0
-    mask = torch.where(h > 0.0)    # Find neurons that fired
+    # mask = torch.where(h > 0.0)    # Find neurons that fired
+    mask = spk > 0.0    # Find neurons that fired
     ref_per_counter[mask] = ref_per_steps # Increment ref period of neurons that fired
     return ref_per_counter
 
@@ -251,14 +252,14 @@ def build_and_train(params, ds_train, ds_test, epochs=epochs):
     global nb_steps
     nb_steps = data_steps
 
+    tau_mem = params['tau_mem']  # ms
+    tau_syn = tau_mem/params['tau_ratio']
+
     # global refp_counter_recurr # refractory period counter recurrent layer
     refp_counter_recurr = torch.zeros(batch_size, nb_hidden,  device=device, dtype=dtype)
 
     # global refp_counter_rout # refractory period counter readout layer
     refp_counter_rout = torch.zeros(batch_size, nb_outputs,  device=device, dtype=dtype)
-
-    tau_mem = params['tau_mem']  # ms
-    tau_syn = tau_mem/params['tau_ratio']
     
     if not use_trainable_tc:
         global alpha
@@ -406,6 +407,13 @@ def train(params, dataset, lr=0.0015, nb_epochs=300, opt_parameters=None, layers
         # accs: mean training accuracies for each batch
         accs = []
         for x_local, y_local in generator:
+            # initialize the ref_per_counter
+            # global refp_counter_recurr # refractory period counter recurrent layer
+            layers[-2] = torch.zeros(batch_size, nb_hidden,  device=device, dtype=dtype)
+
+            # global refp_counter_rout # refractory period counter readout layer
+            layers[-1] = torch.zeros(batch_size, nb_outputs,  device=device, dtype=dtype)
+            
             x_local, y_local = x_local.to(device), y_local.to(device)
             spks_out, recs, layers_update = run_snn(x_local, layers)
             # [mem_rec, spk_rec, out_rec]
@@ -759,9 +767,9 @@ def mem_update(alpha, syn, h1, mem, beta, rst_out, ref_per_counter):
     # new_mem = (beta*mem + syn)*(1.0-rst_out)
     mask = ref_per_counter == 0.0
     new_mem = (mem - torch.sign(mem)*beta) * (1.0-rst_out)  # membrane decay
-    new_mem = new_mem + (syn * mask ) * (1.0-rst_out)  # membrane integration
+    new_mem = new_mem + (syn * mask) * (1.0-rst_out)  # membrane integration
     new_mem[new_mem < -0.2] = -0.2  # lower boarder for mem pot
-    update_refp(h1, ref_per_counter)
+    ref_per_counter = update_refp(rst_out, ref_per_counter)
     return new_syn, new_mem, ref_per_counter
 
 class feedforward_layer:
