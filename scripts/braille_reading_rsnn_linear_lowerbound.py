@@ -21,9 +21,9 @@ from sklearn.metrics import confusion_matrix
 
 # set variables
 use_seed = False
-threshold = 1  # possible values are: 1, 2, 5, 10
+threshold = 2  # possible values are: 1, 2, 5, 10
 # set the number of epochs you want to train the network (default = 300)
-epochs = 20
+epochs = 100
 save_fig = True  # set True to save the plots
 
 global use_trainable_out
@@ -37,7 +37,9 @@ batch_size = 128  # 512
 global lr
 lr = 0.0015
 global ref_per_ms
-ref_per_ms = 5 # ms
+ref_per_ms = 0 # ms
+global mem_vol_boundary
+mem_vol_boundary = -0.2
 
 # create folder to safe plots later
 if save_fig:
@@ -96,7 +98,7 @@ letters = ['Space', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
 def load_and_extract(params, file_name, taxels=None, letter_written=letters):
 
     max_time = int(51*25)  # ms
-    time_bin_size = int(params['time_bin_size'])  # ms
+    time_bin_size = 1  # int(params['time_bin_size'])  # ms
     global time
     time = range(0, max_time, time_bin_size)
 
@@ -113,6 +115,7 @@ def load_and_extract(params, file_name, taxels=None, letter_written=letters):
     else:
         print("!!!!!!!!!!!!!!!!! Refractory period %f should be larger or equal to time step %f"%(ref_per_ms,time_step))
         ref_per_steps = 1
+    ref_per_steps = 0
     # ref_per_steps = 0.0
     # Extract data
     data = []
@@ -168,7 +171,6 @@ def refp_update(spk, ref_per_counter):
     # print(ref_per_counter.shape)
      # Update refractory period counter
     ref_per_counter[ref_per_counter>0] -= 1 # Wehe we decrease our refractory period counter if it is larger than 0
-    # mask = torch.where(h > 0.0)    # Find neurons that fired
     mask = spk > 0.0    # Find neurons that fired
     ref_per_counter[mask] = ref_per_steps # Increment ref period of neurons that fired
     return ref_per_counter
@@ -222,7 +224,7 @@ def run_snn(inputs, layers):
     other_recs = [mem_rec, spk_rec, out_rec]
     layers_update = layers
 
-    print(f"rec spk: {torch.sum(spk_rec)}, out spk: {torch.sum(s_out_rec)}")
+    # print(f"rec spk: {torch.sum(spk_rec)}, out spk: {torch.sum(s_out_rec)}")
 
     return s_out_rec, other_recs, layers_update
 
@@ -401,8 +403,6 @@ def train(params, dataset, lr=0.0015, nb_epochs=300, opt_parameters=None, layers
     loss_hist = []
     accs_hist = [[], []]
     for e in range(nb_epochs):
-        
-        print(f"epoch: {e}")
         # learning rate decreases over epochs
         optimizer = torch.optim.Adamax(parameters, lr=lr, betas=(0.9, 0.995))
         # if e > nb_epochs/2:
@@ -624,10 +624,10 @@ def ConfusionMatrix(dataset, save, layers=None, labels=letters):
     plt.xticks(rotation=0)
     if save:
         if use_trainable_out:
-            plt.savefig("./plots_ss/rsnn_1layers_train_tc_output_optimized_thr_" +
+            plt.savefig("./figures/rsnn_1layers_train_tc_output_optimized_thr_" +
                         str(threshold) + "_cm.png", dpi=300)
         else:
-            plt.savefig("./plots_ss/rsnn_1layers_train_tc_thr_" +
+            plt.savefig("./figures/rsnn_1layers_train_tc_thr_" +
                         str(threshold) + "_cm.png", dpi=300)
     else:
         plt.show()
@@ -767,17 +767,22 @@ class SurrGradSpike(torch.autograd.Function):
 spike_fn = SurrGradSpike.apply
 
 def mem_update(alpha, syn, h1, mem, beta, rst_out, ref_per_counter):
-    # TODO for the last batch we do not see the 128 members, but less. Make the code more adaptive!
     batch_size = syn.shape[0]
     if ref_per_counter.shape[0] != batch_size:
         ref_per_counter = ref_per_counter[:batch_size]
-    #new_syn = alpha*syn + h1
-    new_syn = h1
-    # new_mem = (beta*mem + syn)*(1.0-rst_out)
     mask = ref_per_counter == 0.0
-    new_mem = (mem - torch.sign(mem)*beta) * (1.0-rst_out)  # membrane decay
-    new_mem = new_mem + (syn * mask) * (1.0-rst_out)  # membrane integration
-    new_mem[new_mem < -0.2] = -0.2  # lower boarder for mem pot
+
+    new_syn = alpha*syn + h1  # with synaptic decay
+    # new_syn = h1  # without synaptic decay
+
+    new_mem = (beta*mem + syn)*(1.0-rst_out)  # exponential decay
+
+    # new_mem = (mem - torch.sign(mem)*beta) * (1.0-rst_out)  # linear membrane decay
+    # new_mem = new_mem + (syn * mask) * (1.0-rst_out)  # membrane integration
+    # beta = 0.01  # beta > 0.1 fails after epoch 4
+    # new_mem = ((mem - torch.sign(mem)*beta) + syn*mask)*(1.0-rst_out)
+    
+    new_mem[new_mem < mem_vol_boundary] = mem_vol_boundary  # lower boarder for mem pot
     ref_per_counter = refp_update(rst_out, ref_per_counter)
     return new_syn, new_mem, ref_per_counter
 
@@ -998,7 +1003,7 @@ plt.xlabel("Epoch")
 plt.ylabel("Accuracy (%)")
 plt.ylim((0, 105))
 plt.legend(["Training", "Test"], loc='lower right')
-plt.savefig("./plots_ss/rsnn_1layers_train_tc_thr_" +
+plt.savefig("./figures/rsnn_1layers_train_tc_thr_" +
                 str(threshold)+"_acc.png", dpi=300)
 plt.show()
 
@@ -1007,6 +1012,6 @@ ConfusionMatrix(ds_test, layers=very_best_layer, save=save_fig)
 
 # plotting the network activity
 spk_rec, spk_rec3, spks_out = NetworkActivity(ds_test, layers=very_best_layer)
-PlotNetworkActivity(spk_rec, spk_rec3, spks_out, save=save_fig, directory='plots_ss')
-plt.savefig("./plots_ss/rsnn_1layers_train_tc_thr_activity_linear" +
+PlotNetworkActivity(spk_rec, spk_rec3, spks_out, save=save_fig, directory='figures')
+plt.savefig("./figures/rsnn_1layers_train_tc_thr_activity_linear" +
                 str(threshold)+"_acc.png", dpi=300)
