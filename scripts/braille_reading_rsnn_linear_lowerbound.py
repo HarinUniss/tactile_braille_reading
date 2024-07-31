@@ -1,6 +1,4 @@
 import os
-import pickle
-import warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,18 +10,18 @@ from matplotlib.gridspec import GridSpec
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset
+from tqdm import tqdm
 
-# TODO inlcude logging!
-# %matplotlib qt
-# warnings.filterwarnings("ignore")  # supress warnings from matplotlib
+# TODO inlcude logging, pin_memory=True, drop_last=True!
 
 # set variables
 use_seed = False
 threshold = 2  # possible values are: 1, 2, 5, 10
 # set the number of epochs you want to train the network (default = 300)
-epochs = 100
+epochs = 50
 save_fig = True  # set True to save the plots
 
+# TODO change all those globals!....
 global use_trainable_out
 use_trainable_out = False
 global use_trainable_tc
@@ -37,16 +35,18 @@ lr = 0.0015
 
 global use_ref_per
 use_ref_per = False  # enable/disable refractory period
-global ref_per_ms
-ref_per_ms = 1*0.001  # 1ms at 1ms precision
 global use_linear_decay
-use_linear_decay = True  # if False exponential decay
+use_linear_decay = False  # if False exponential decay
 global no_synapse
-no_synapse = True  # if True no synaptic integration
+no_synapse = False  # if True no synaptic integration
 global set_mem_boundary
-set_mem_boundary = True  # enable/disable clamping of min voltage
-global mem_boundary
-mem_boundary = -0.2
+set_mem_boundary = False  # enable/disable clamping of min voltage
+if use_ref_per:
+    global ref_per_ms
+    ref_per_ms = 1*0.001  # 1ms at 1ms precision
+if set_mem_boundary:
+    global mem_boundary
+    mem_boundary = -0.2
 
 # create folder to safe plots later
 if save_fig:
@@ -117,15 +117,16 @@ def load_and_extract(params, file_name, taxels=None, letter_written=letters):
     data_dict = pd.read_pickle(file_name)
 
     # Set refractory periond in time steps
-    global ref_per_steps
-    if ref_per_ms >= time_step:
-        ref_per_steps = ref_per_ms/(time_step*1000)  # ms
-    else:
-        print("Refractory period %f should be larger or equal to time step %f" % (
-            ref_per_ms, time_step))
-        ref_per_steps = 1
-    ref_per_steps = 0
-    # ref_per_steps = 0.0
+    if use_ref_per:
+
+        global ref_per_steps
+        ref_per_steps = 0
+        if ref_per_ms >= time_step:
+            ref_per_steps = ref_per_ms/(time_step*1000)  # ms
+        else:
+            print("Refractory period %f should be larger or equal to time step %f. Setting refractory period to 1 simualtion time step." % (
+                ref_per_ms, time_step))
+            ref_per_steps = 1
     # Extract data
     data = []
     labels = []
@@ -178,16 +179,24 @@ def load_and_extract(params, file_name, taxels=None, letter_written=letters):
 
 def run_snn(inputs, layers):
 
-    if use_trainable_out and use_trainable_tc:
+    if use_trainable_out and use_trainable_tc and use_ref_per:
         w1, w2, v1, alpha1, beta1, alpha2, beta2, out_scale, out_offset, refp_counter_recurr, refp_counter_rout = layers
-    elif use_trainable_tc:
+    elif use_trainable_out and use_trainable_tc:
+        w1, w2, v1, alpha1, beta1, alpha2, beta2, out_scale, out_offset = layers
+    elif use_trainable_tc and use_ref_per:
         w1, w2, v1, alpha1, beta1, alpha2, beta2, refp_counter_recurr, refp_counter_rout = layers
-    elif use_trainable_out:
+    elif use_trainable_tc:
+        w1, w2, v1, alpha1, beta1, alpha2, beta2 = layers
+    elif use_trainable_out and use_ref_per:
         w1, w2, v1, out_scale, out_offset, refp_counter_recurr, refp_counter_rout = layers
-    else:
+    elif use_trainable_out:
+        w1, w2, v1, out_scale, out_offset = layers
+    elif use_ref_per:
         w1, w2, v1, refp_counter_recurr, refp_counter_rout = layers
+    else:
+        w1, w2, v1 = layers
     if use_dropout:
-        dropout = nn.Dropout(p=0.25)  # using dropout on n % of spikes
+        dropout = nn.Dropout(p=0.25)  # using dropout on n % of time steps
     if use_trainable_tc:
         alpha1, beta1 = torch.abs(alpha1), torch.abs(beta1)
         alpha2, beta2 = torch.abs(alpha2), torch.abs(beta2)
@@ -198,25 +207,35 @@ def run_snn(inputs, layers):
         "abc,cd->abd", (inputs.tile((nb_input_copies,)), w1))
     if use_dropout:
         h1 = dropout(h1)
-    if use_trainable_tc:
+    if use_trainable_tc and use_ref_per:
         spk_rec, mem_rec = recurrent_layer.compute_activity_tc(
             bs, nb_hidden, h1, v1, alpha1, beta1, nb_steps, refp_counter_recurr)
+    elif use_trainable_tc:
+        spk_rec, mem_rec = recurrent_layer.compute_activity_tc(
+            bs, nb_hidden, h1, v1, alpha1, beta1, nb_steps)
+    elif use_ref_per:
+        spk_rec, mem_rec = recurrent_layer.compute_activity_tc(
+            bs, nb_hidden, h1, v1, nb_steps, refp_counter_recurr)
     else:
         spk_rec, mem_rec = recurrent_layer.compute_activity(
-            bs, nb_hidden, h1, v1, nb_steps, refp_counter_recurr)
-    # refp_counter_recurr = refp_update(spk_rec, refp_counter_recurr)
+            bs, nb_hidden, h1, v1, nb_steps)
 
     # Readout layer
     h2 = torch.einsum("abc,cd->abd", (spk_rec, w2))
     if use_dropout:
         h2 = dropout(h2)
-    if use_trainable_tc:
+    if use_trainable_tc and use_ref_per:
         s_out_rec, out_rec = feedforward_layer.compute_activity_tc(
             bs, nb_outputs, h2, alpha2, beta2, nb_steps, refp_counter_rout)
+    elif use_trainable_tc:
+        s_out_rec, out_rec = feedforward_layer.compute_activity_tc(
+            bs, nb_outputs, h2, alpha2, beta2, nb_steps)
+    elif use_ref_per:
+        s_out_rec, out_rec = feedforward_layer.compute_activity_tc(
+            bs, nb_outputs, h2, nb_steps, refp_counter_rout)
     else:
         s_out_rec, out_rec = feedforward_layer.compute_activity(
-            bs, nb_outputs, h2, nb_steps, refp_counter_rout)
-    # refp_counter_rout = refp_update(s_out_rec, refp_counter_rout)
+            bs, nb_outputs, h2, nb_steps)
 
     if use_trainable_out:
         # trainable output spike scaling
@@ -228,22 +247,7 @@ def run_snn(inputs, layers):
     other_recs = [mem_rec, spk_rec, out_rec]
     layers_update = layers
 
-    # print(f"rec spk: {torch.sum(spk_rec)}, out spk: {torch.sum(s_out_rec)}")
-
     return s_out_rec, other_recs, layers_update
-
-
-def load_layers(file, map_location, requires_grad=True, variable=False):
-
-    if variable:
-        lays = file
-        for ii in lays:
-            ii.requires_grad = requires_grad
-    else:
-        lays = torch.load(file, map_location=map_location)
-        for ii in lays:
-            ii.requires_grad = requires_grad
-    return lays
 
 
 def build_and_train(params, ds_train, ds_test, epochs=epochs):
@@ -265,25 +269,26 @@ def build_and_train(params, ds_train, ds_test, epochs=epochs):
     tau_mem = params['tau_mem']  # ms
     tau_syn = tau_mem/params['tau_ratio']
 
-    # global refp_counter_recurr # refractory period counter recurrent layer
-    refp_counter_recurr = torch.zeros(
-        batch_size, nb_hidden,  device=device, dtype=dtype)
+    if use_ref_per:
+        # global refp_counter_recurr # refractory period counter recurrent layer
+        refp_counter_recurr = torch.zeros(
+            batch_size, nb_hidden,  device=device, dtype=dtype)
 
-    # global refp_counter_rout # refractory period counter readout layer
-    refp_counter_rout = torch.zeros(
-        batch_size, nb_outputs,  device=device, dtype=dtype)
+        # global refp_counter_rout # refractory period counter readout layer
+        refp_counter_rout = torch.zeros(
+            batch_size, nb_outputs,  device=device, dtype=dtype)
 
     if not use_trainable_tc:
         global alpha
         global beta
-    
+
     alpha = float(np.exp(-time_step/tau_syn))
     if use_linear_decay:
-        beta = 0.001  # for linear decay
+        beta = 0.980199  # for linear decay
     else:
-        beta = float(np.exp(-time_step/tau_mem))
+        beta = float(np.exp(-time_step/tau_mem))  # beta 0.980199 for thr 2
     print("beta %f, time_step %f" % (beta, time_step))
-    
+
     fwd_weight_scale = params['fwd_weight_scale']
     rec_weight_scale = fwd_weight_scale*params['weight_scale_factor']
 
@@ -310,7 +315,6 @@ def build_and_train(params, ds_train, ds_test, epochs=epochs):
     if use_trainable_tc:
         layers.append(alpha1), layers.append(
             beta1), layers.append(alpha2), layers.append(beta2)
-    layers.append(refp_counter_recurr), layers.append(refp_counter_rout)
 
     if use_trainable_out:
         # include trainable output for readout layer (linear: y = out_scale * x + out_offset)
@@ -323,25 +327,12 @@ def build_and_train(params, ds_train, ds_test, epochs=epochs):
         torch.nn.init.zeros_(out_offset)
         layers.append(out_offset)
 
-    layers_init = []
-    for ii in layers:
-        layers_init.append(ii.detach().clone())
-
-    if use_trainable_out and use_trainable_tc:
-        opt_parameters = [w1, w2, v1, alpha1, beta1, alpha2, beta2,
-                          out_scale, out_offset, refp_counter_recurr, refp_counter_rout]
-    elif use_trainable_tc:
-        opt_parameters = [w1, w2, v1, alpha1, beta1, alpha2,
-                          beta2, refp_counter_recurr, refp_counter_rout]
-    elif use_trainable_out:
-        opt_parameters = [w1, w2, v1, out_scale, out_offset,
-                          refp_counter_recurr, refp_counter_rout]
-    else:
-        opt_parameters = [w1, w2, v1, refp_counter_recurr, refp_counter_rout]
+    if use_ref_per:
+        layers.append(refp_counter_recurr), layers.append(refp_counter_rout)
 
     # a fixed learning rate is already defined within the train function, that's why here it is omitted
     loss_hist, accs_hist, best_layers = train(
-        params, ds_train, lr=lr, nb_epochs=epochs, opt_parameters=opt_parameters, layers=layers, dataset_test=ds_test)
+        params, ds_train, lr=lr, nb_epochs=epochs, layers=layers, dataset_test=ds_test)  # , opt_parameters=opt_parameters
 
     # best training and test at best training
     acc_best_train = np.max(accs_hist[0])  # returns max value
@@ -355,82 +346,35 @@ def build_and_train(params, ds_train, ds_test, epochs=epochs):
     idx_best_test = np.argmax(accs_hist[1])
     acc_train_at_best_test = accs_hist[0][idx_best_test]*100
 
-    # TODO track time constants!!!
     print("Final results: ")
     print("Best training accuracy: {:.2f}% and according test accuracy: {:.2f}% at epoch: {}".format(
         acc_best_train, acc_test_at_best_train, idx_best_train+1))
     print("Best test accuracy: {:.2f}% and according train accuracy: {:.2f}% at epoch: {}".format(
         acc_best_test, acc_train_at_best_test, idx_best_test+1))
     print("------------------------------------------------------------------------------------\n")
+
     return loss_hist, accs_hist, best_layers
 
 
-def train(params, dataset, lr=0.0015, nb_epochs=300, opt_parameters=None, layers=None, dataset_test=None):
+def train(params, dataset, lr=0.0015, nb_epochs=300, layers=None, dataset_test=None):
 
-    if (opt_parameters != None) & (layers != None):
-        parameters = opt_parameters  # The paramters we want to optimize
-        layers = layers
-    elif (opt_parameters != None) & (layers == None):
-        parameters = opt_parameters
-        if use_trainable_out and use_trainable_tc:
-            layers = [w1, w2, v1, alpha1, beta1, alpha2, out_scale,
-                      out_offset, refp_counter_recurr, refp_counter_rout]
-        elif use_trainable_out:
-            layers = [w1, w2, v1, out_scale, out_offset,
-                      refp_counter_recurr, refp_counter_rout]
-        elif use_trainable_tc:
-            layers = [w1, w2, v1, alpha1, beta1, alpha2,
-                      beta2, refp_counter_recurr, refp_counter_rout]
-        else:
-            layers = [w1, w2, v1, alpha1, beta1, alpha2,
-                      beta2, refp_counter_recurr, refp_counter_rout]
-    elif (opt_parameters == None) & (layers != None):
-        if use_trainable_out and use_trainable_tc:
-            layers = [w1, w2, v1, alpha1, beta1, alpha2,
-                      beta2, out_scale, out_offset, refp_counter_recurr, refp_counter_rout]
-        elif use_trainable_out:
-            layers = [w1, w2, v1, out_scale, out_offset,
-                      refp_counter_recurr, refp_counter_rout]
-        elif use_trainable_tc:
-            layers = [w1, w2, v1, alpha1, beta1, alpha2,
-                      beta2, refp_counter_recurr, refp_counter_rout]
-        else:
-            layers = [w1, w2, v1, alpha1, beta1, alpha2,
-                      beta2, refp_counter_recurr, refp_counter_rout]
-        layers = layers
-    elif (opt_parameters == None) & (layers == None):
-        if use_trainable_out and use_trainable_tc:
-            parameters = [w1, w2, v1, alpha1, beta1, alpha2,
-                          beta2, out_scale, out_offset, refp_counter_recurr, refp_counter_rout]
-            layers = [w1, w2, v1, alpha1, beta1, alpha2,
-                      beta2, out_scale, out_offset, refp_counter_recurr, refp_counter_rout]
-        elif use_trainable_out:
-            parameters = [w1, w2, v1, out_scale, out_offset,
-                          refp_counter_recurr, refp_counter_rout]
-            layers = [w1, w2, v1, out_scale, out_offset,
-                      refp_counter_recurr, refp_counter_rout]
-        elif use_trainable_tc:
-            parameters = [w1, w2, v1, alpha1, beta1, alpha2,
-                          beta2, refp_counter_recurr, refp_counter_rout]
-            layers = [w1, w2, v1, alpha1, beta1, alpha2,
-                      beta2, refp_counter_recurr, refp_counter_rout]
-        else:
-            parameters = [w1, w2, v1, alpha1, beta1,
-                          alpha2, beta2, refp_counter_recurr, refp_counter_rout]
-            layers = [w1, w2, v1, alpha1, beta1,
-                      alpha2, beta2, refp_counter_recurr, refp_counter_rout]
+    # sets the parameter we want to optimize during training (e.g. weights)
+    parameters = layers
 
     # The log softmax function across output units
     log_softmax_fn = nn.LogSoftmax(dim=1)
     loss_fn = nn.NLLLoss()  # The negative log likelihood loss function
 
     generator = DataLoader(dataset, batch_size=batch_size,
-                           shuffle=True, num_workers=2)
+                           shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
 
     # The optimization loop
     loss_hist = []
     accs_hist = [[], []]
-    for e in range(nb_epochs):
+    pbar_epochs = tqdm(range(nb_epochs), position=0,
+                       total=nb_epochs, leave=True)
+    pbar_epochs.set_description(f"training acc (train loss), test acc")
+    for _ in pbar_epochs:
         # learning rate decreases over epochs
         optimizer = torch.optim.Adamax(parameters, lr=lr, betas=(0.9, 0.995))
         # if e > nb_epochs/2:
@@ -438,15 +382,18 @@ def train(params, dataset, lr=0.0015, nb_epochs=300, opt_parameters=None, layers
         local_loss = []
         # accs: mean training accuracies for each batch
         accs = []
-        for x_local, y_local in generator:
-            # initialize the ref_per_counter
-            # global refp_counter_recurr # refractory period counter recurrent layer
-            layers[-2] = torch.zeros(batch_size, nb_hidden,
-                                     device=device, dtype=dtype)
+        pbar_batches = tqdm(generator, total=len(
+            generator), position=1, leave=False)
+        for x_local, y_local in pbar_batches:
+            if use_ref_per:
+                # initialize the ref_per_counter
+                # refractory period counter recurrent layer
+                layers[-2] = torch.zeros(batch_size, nb_hidden,
+                                         device=device, dtype=dtype)
 
-            # global refp_counter_rout # refractory period counter readout layer
-            layers[-1] = torch.zeros(batch_size, nb_outputs,
-                                     device=device, dtype=dtype)
+                # refractory period counter readout layer
+                layers[-1] = torch.zeros(batch_size, nb_outputs,
+                                         device=device, dtype=dtype)
 
             x_local, y_local = x_local.to(device), y_local.to(device)
             spks_out, recs, layers_update = run_snn(x_local, layers)
@@ -493,8 +440,8 @@ def train(params, dataset, lr=0.0015, nb_epochs=300, opt_parameters=None, layers
 
             # compare to labels
             _, am = torch.max(m, 1)  # argmax over output units
-            tmp = np.mean((y_local == am).detach().cpu().numpy())
-            accs.append(tmp)
+            acc_per_batch = np.mean((y_local == am).detach().cpu().numpy())
+            accs.append(acc_per_batch)
 
         mean_loss = np.mean(local_loss)
         loss_hist.append(mean_loss)
@@ -506,10 +453,7 @@ def train(params, dataset, lr=0.0015, nb_epochs=300, opt_parameters=None, layers
         # Calculate test accuracy in each epoch
         if dataset_test is not None:
             test_acc = compute_classification_accuracy(
-                params,
-                dataset_test,
-                layers=layers_update
-            )
+                dataset=dataset_test, layers=layers_update)
             accs_hist[1].append(test_acc)  # only safe best test
 
         if dataset_test is None:
@@ -525,60 +469,22 @@ def train(params, dataset, lr=0.0015, nb_epochs=300, opt_parameters=None, layers
                 for ii in layers_update:
                     best_acc_layers.append(ii.detach().clone())
 
-        # plt.figure("live plot")
-        # plt.title("Epoch: {}" .format(e+1))
-        # plt.subplot(1, 2, 1)
-        # plt.plot(range(1, len(accs_hist[0])+1),
-        #          100*np.array(accs_hist[0]), color='blue')
-        # plt.plot(range(1, len(accs_hist[1])+1),
-        #          100*np.array(accs_hist[1]), color='orange')
-        # plt.xlabel("Epoch")
-        # plt.ylabel("Accuracy (%)")
-        # plt.ylim(0, 105)
-        # plt.legend(["Training", "Test"], loc='lower right')
-        # plt.subplot(1, 2, 2)
-        # plt.plot(range(1, len(loss_hist)+1), np.array(loss_hist), color='blue')
-        # plt.xlabel("Epoch")
-        # plt.ylabel("Loss")
-        # plt.legend(["Training"], loc='lower right')
-        # # to avoid clearing last plot
-        # if (e != epochs-1):
-        #     plt.draw()
-        #     plt.pause(0.1)
-        #     plt.cla()
-        # else:
-        #     plt.close("live plot")
-
-        print("Epoch {}/{} done. Train accuracy: {:.2f}%, Test accuracy: {:.2f}%, Loss: {:.5f}.".format(
-            e + 1, nb_epochs, accs_hist[0][-1]*100, accs_hist[1][-1]*100, loss_hist[-1]))
+        pbar_epochs.set_description("{:.2f}% ({:.3f}), {:.2f}%".format(
+            accs_hist[0][-1]*100, accs_hist[1][-1]*100, loss_hist[-1]))
 
     return loss_hist, accs_hist, best_acc_layers
 
 
-def compute_classification_accuracy(params, dataset, layers=None):
+def compute_classification_accuracy(dataset, layers):
     """ Computes classification accuracy on supplied data in batches. """
 
     generator = DataLoader(dataset, batch_size=batch_size,
-                           shuffle=False, num_workers=2)
+                           shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
     accs = []
 
     for x_local, y_local in generator:
         x_local, y_local = x_local.to(device), y_local.to(device)
-        if layers == None:
-            if use_trainable_out and use_trainable_tc:
-                layers = [w1, w2, v1, alpha1, beta1, alpha2,
-                          beta2, out_scale, out_offset, refp_counter_recurr, refp_counter_rout]
-            elif use_trainable_out:
-                layers = [w1, w2, v1, out_scale, out_offset,
-                          refp_counter_recurr, refp_counter_rout]
-            elif use_trainable_tc:
-                layers = [w1, w2, v1, alpha1, beta1, alpha2,
-                          beta2, refp_counter_recurr, refp_counter_rout]
-            else:
-                layers = [w1, w2, v1, alpha1, beta1, alpha2,
-                          beta2, refp_counter_recurr, refp_counter_rout]
-            spks_out, _, _ = run_snn(x_local, layers)
-        else:
+        with torch.no_grad():
             spks_out, _, _ = run_snn(x_local, layers)
         # with output spikes
         if use_trainable_out:
@@ -586,22 +492,6 @@ def compute_classification_accuracy(params, dataset, layers=None):
         else:
             m = torch.sum(spks_out, 1)  # sum over time
         _, am = torch.max(m, 1)     # argmax over output units
-        # top_k_idc = torch.topk(m, 2, 1).indices  # returns idc of top k entries
-        # top_k_values = torch.topk(m, 2, 1)
-        # print(len(top_k_values))
-        # certainty = torch.diff(top_k_values, 1, 1)
-        # print(certainty)
-        # for batch_counter, batch in enumerate(m):
-        #    print(batch_counter)
-        #    print(batch.detach().cpu().numpy())
-        #    print(torch.topk(batch, 2).indices)
-        #    print(torch.topk(batch, 2))
-        #    values = torch.topk(batch, 2)
-        #    <print(values[1].detach().cpu().numpy()- values[0].detach().cpu().numpy())
-
-        # calculate certainty
-        # two_winning = torch.topk(m, axis=1, 3).indices
-        # print(two_winning)
 
         # compare to labels
         tmp = np.mean((y_local == am).detach().cpu().numpy())
@@ -610,30 +500,16 @@ def compute_classification_accuracy(params, dataset, layers=None):
     return np.mean(accs)
 
 
-def ConfusionMatrix(dataset, save, layers=None, labels=letters):
+def ConfusionMatrix(dataset, save, layers, labels=letters):
 
     generator = DataLoader(dataset, batch_size=batch_size,
-                           shuffle=False, num_workers=2)
+                           shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
     accs = []
     trues = []
     preds = []
     for x_local, y_local in generator:
         x_local, y_local = x_local.to(device), y_local.to(device)
-        if layers == None:
-            if use_trainable_out and use_trainable_tc:
-                layers = [w1, w2, v1, alpha1, beta1, alpha2,
-                          beta2, out_scale, out_offset, refp_counter_recurr, refp_counter_rout]
-            elif use_trainable_out:
-                layers = [w1, w2, v1, out_scale, out_offset,
-                          refp_counter_recurr, refp_counter_rout]
-            elif use_trainable_tc:
-                layers = [w1, w2, v1, alpha1, beta1, alpha2,
-                          beta2, refp_counter_recurr, refp_counter_rout]
-            else:
-                layers = [w1, w2, v1, alpha1, beta1, alpha2,
-                          beta2, refp_counter_recurr, refp_counter_rout]
-            spks_out, _, _ = run_snn(x_local, layers)
-        else:
+        with torch.no_grad():
             spks_out, _, _ = run_snn(x_local, layers)
         # with output spikes
         if use_trainable_out:
@@ -671,35 +547,15 @@ def ConfusionMatrix(dataset, save, layers=None, labels=letters):
         plt.show()
 
 
-def NetworkActivity(dataset, layers=None, labels=letters):
+def NetworkActivity(dataset, layers):
 
     generator = DataLoader(dataset, batch_size=batch_size,
-                           shuffle=False, num_workers=2)
-    accs = []
-    trues = []
-    preds = []
+                           shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
     for x_local, y_local in generator:
         x_local, y_local = x_local.to(device), y_local.to(device)
-        if layers == None:
-            if use_trainable_out and use_trainable_tc:
-                layers = [w1, w2, v1, alpha1, beta1, alpha2,
-                          beta2, out_scale, out_offset, refp_counter_recurr, refp_counter_rout]
-            elif use_trainable_out:
-                layers = [w1, w2, v1, out_scale, out_offset,
-                          refp_counter_recurr, refp_counter_rout]
-            elif use_trainable_tc:
-                layers = [w1, w2, v1, alpha1, beta1, alpha2,
-                          beta2, refp_counter_recurr, refp_counter_rout]
-            else:
-                layers = [w1, w2, v1, alpha1, beta1, alpha2,
-                          beta2, refp_counter_recurr, refp_counter_rout]
+        with torch.no_grad():
             spks_out, recs, _ = run_snn(x_local, layers)
-        else:
-            spks_out, recs, _ = run_snn(x_local, layers)
-
-        # [mem_rec, spk_rec, mem_rec2, spk_rec2, out_rec]
         spk_rec, spk_rec3, _ = recs
-        # s_out_rec, other_recs, layers_update
 
     return spk_rec, spk_rec3, spks_out
 
@@ -737,7 +593,7 @@ def PlotTrainingPerformance(acc_train_list, acc_test_list):
     plt.close()
 
 
-def PlotNetworkActivity(spk_rec, spk_rec3, spks_out, save, directory='plots'):
+def PlotNetworkActivity(spk_rec, spk_rec3, spks_out, save, directory='./figures'):
     nb_plt = 4
     gs = GridSpec(1, nb_plt)
 
@@ -756,11 +612,11 @@ def PlotNetworkActivity(spk_rec, spk_rec3, spks_out, save, directory='plots'):
     plt.title("Hidden layer 1")
     if save:
         if use_trainable_out:
-            plt.savefig("./" + directory + "/rsnn_1layers_train_tc_output" +
-                        "_thr_" + str(threshold) + "_rp_layer_1.png", dpi=300)
+            plt.savefig(
+                f"{directory}/rsnn_1layers_train_tc_output_thr_{threshold}_rp_layer_1.png", dpi=300)
         else:
-            plt.savefig("./" + directory + "/rsnn_1layers_train_tc_thr_" +
-                        str(threshold) + "_rp_layer_1.png", dpi=300)
+            plt.savefig(
+                f"{directory}/rsnn_1layers_train_tc_thr_{threshold}_rp_layer_1.png", dpi=300)
 
     # output layer
     fig_rasterplots = plt.figure(figsize=(7, 3), dpi=150)
@@ -775,11 +631,11 @@ def PlotNetworkActivity(spk_rec, spk_rec3, spks_out, save, directory='plots'):
     plt.title("Output layer")
     if save:
         if use_trainable_out:
-            plt.savefig("./" + directory + "/rsnn_1layers_train_tc_output" +
-                        "_thr_" + str(threshold) + "_rp_output_layer.png", dpi=300)
+            plt.savefig(
+                f"{directory}/rsnn_1layers_train_tc_output_thr_{threshold}_rp_output_layer.png", dpi=300)
         else:
-            plt.savefig("./" + directory + "/rsnn_1layers_train_tc_thr_" +
-                        str(threshold) + "_rp_output_layer.png", dpi=300)
+            plt.savefig(
+                f"{directory}/rsnn_1layers_train_tc_thr_{threshold}_rp_output_layer.png", dpi=300)
     else:
         plt.show()
     return fig_general_activity, fig_rasterplots
@@ -845,7 +701,7 @@ class SurrGradSpike(torch.autograd.Function):
 spike_fn = SurrGradSpike.apply
 
 
-def mem_update(alpha, syn, h1, mem, beta, rst_out, ref_per_counter):
+def mem_update(alpha, syn, h1, mem, beta, rst_out, ref_per_counter=None):
     if use_ref_per:
         batch_size = syn.shape[0]
         if ref_per_counter.shape[0] != batch_size:
@@ -906,7 +762,7 @@ class feedforward_layer:
         torch.nn.init.normal_(ff_layer, mean=0.0, std=scale/np.sqrt(nb_inputs))
         return ff_layer
 
-    def compute_activity(nb_input, nb_neurons, input_activity, nb_steps, ref_per_counter):
+    def compute_activity(nb_input, nb_neurons, input_activity, nb_steps, ref_per_counter=None):
         # TODO we have to check the ref per here! Here we compute all time steps of a single layer -> ref has to be applied here
         syn = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
         mem = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
@@ -934,7 +790,7 @@ class feedforward_layer:
         spk_rec = torch.stack(spk_rec, dim=1)
         return spk_rec, mem_rec
 
-    def compute_activity_tc(nb_input, nb_neurons, input_activity, alpha, beta, nb_steps, ref_per_counter):
+    def compute_activity_tc(nb_input, nb_neurons, input_activity, alpha, beta, nb_steps, ref_per_counter=None):
         syn = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
         mem = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
         out = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
@@ -978,7 +834,7 @@ class recurrent_layer:
                               std=rec_scale/np.sqrt(nb_inputs))
         return ff_layer,  rec_layer
 
-    def compute_activity(nb_input, nb_neurons, input_activity, layer, nb_steps, ref_per_counter):
+    def compute_activity(nb_input, nb_neurons, input_activity, layer, nb_steps, ref_per_counter=None):
         syn = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
         mem = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
         out = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
@@ -1007,7 +863,7 @@ class recurrent_layer:
         spk_rec = torch.stack(spk_rec, dim=1)
         return spk_rec, mem_rec
 
-    def compute_activity_tc(nb_input, nb_neurons, input_activity, layer, alpha, beta, nb_steps, ref_per_counter):
+    def compute_activity_tc(nb_input, nb_neurons, input_activity, layer, alpha, beta, nb_steps, ref_per_counter=None):
         syn = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
         mem = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
         out = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
@@ -1059,12 +915,14 @@ ds_train, ds_test, ds_validation, labels, nb_channels, data_steps = load_and_ext
     params, file_name, letter_written=letters)
 for repetition in range(max_repetitions):
     if repetition == 0:
+        print(f"use_trainable_out: {use_trainable_out}, use_trainable_tc: {use_trainable_tc}, use_dropout: {use_dropout}, use_ref_per: {use_ref_per}, use_linear_decay: {use_linear_decay}, no_synapse: {no_synapse}, set_mem_boundary: {set_mem_boundary}")
         print("Number of training data %i" % len(ds_train))
         print("Number of testing data %i" % len(ds_test))
         print("Number of validation data %i" % len(ds_validation))
         print("Number of outputs %i" % len(np.unique(labels)))
         print("Number of timesteps %i" % data_steps)
         print("Input duration %fs" % (data_steps*time_step))
+        print("Batch size: %i" % batch_size)
         print("---------------------------\n")
 
     # initialize and train network
@@ -1073,10 +931,7 @@ for repetition in range(max_repetitions):
 
     # get validation results
     val_acc = compute_classification_accuracy(
-        params,
-        ds_validation,
-        layers=best_layers
-    )
+        dataset=ds_validation, layers=best_layers)
 
     # safe overall best layer
     if repetition == 0:
@@ -1107,5 +962,3 @@ ConfusionMatrix(ds_test, layers=very_best_layer, save=save_fig)
 spk_rec, spk_rec3, spks_out = NetworkActivity(ds_test, layers=very_best_layer)
 PlotNetworkActivity(spk_rec, spk_rec3, spks_out,
                     save=save_fig, directory='figures')
-# plt.savefig("./figures/rsnn_1layers_train_tc_thr_activity_linear" +
-#             str(threshold)+"_acc.png", dpi=300)
