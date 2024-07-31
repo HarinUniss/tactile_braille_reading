@@ -470,7 +470,7 @@ def train(params, dataset, lr=0.0015, nb_epochs=300, layers=None, dataset_test=N
                     best_acc_layers.append(ii.detach().clone())
 
         pbar_epochs.set_description("{:.2f}% ({:.3f}), {:.2f}%".format(
-            accs_hist[0][-1]*100, accs_hist[1][-1]*100, loss_hist[-1]))
+            accs_hist[0][-1]*100, loss_hist[-1], accs_hist[1][-1]*100))
 
     return loss_hist, accs_hist, best_acc_layers
 
