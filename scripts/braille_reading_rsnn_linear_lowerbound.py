@@ -12,7 +12,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
-# TODO inlcude logging, pin_memory=True, drop_last=True!
+# TODO inlcude logging, pin_memory=True, drop_last=False!
 
 # set variables
 use_seed = False
@@ -106,7 +106,7 @@ letters = ['Space', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
 def load_and_extract(params, file_name, taxels=None, letter_written=letters):
 
     max_time = int(51*25)  # ms
-    time_bin_size = 1  # int(params['time_bin_size'])  # ms
+    time_bin_size = int(params['time_bin_size'])  # ms
     global time
     time = range(0, max_time, time_bin_size)
 
@@ -282,11 +282,14 @@ def build_and_train(params, ds_train, ds_test, epochs=epochs):
         global alpha
         global beta
 
-    alpha = float(np.exp(-time_step/tau_syn))
+    if not no_synapse:
+        alpha = float(np.exp(-time_step/tau_syn))
+    
     if use_linear_decay:
-        beta = 0.980199  # for linear decay
+        beta =  0.2  # for linear decay
     else:
-        beta = float(np.exp(-time_step/tau_mem))  # beta 0.980199 for thr 2
+        beta = float(np.exp(-time_step/tau_mem))  # beta 0.980199 for thr 2 and bin_size 5
+        # beta = 0.01
     print("beta %f, time_step %f" % (beta, time_step))
 
     fwd_weight_scale = params['fwd_weight_scale']
@@ -366,7 +369,7 @@ def train(params, dataset, lr=0.0015, nb_epochs=300, layers=None, dataset_test=N
     loss_fn = nn.NLLLoss()  # The negative log likelihood loss function
 
     generator = DataLoader(dataset, batch_size=batch_size,
-                           shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
+                           shuffle=True, num_workers=2, pin_memory=True, drop_last=False)
 
     # The optimization loop
     loss_hist = []
@@ -479,7 +482,7 @@ def compute_classification_accuracy(dataset, layers):
     """ Computes classification accuracy on supplied data in batches. """
 
     generator = DataLoader(dataset, batch_size=batch_size,
-                           shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
+                           shuffle=True, num_workers=2, pin_memory=True, drop_last=False)
     accs = []
 
     for x_local, y_local in generator:
@@ -503,7 +506,7 @@ def compute_classification_accuracy(dataset, layers):
 def ConfusionMatrix(dataset, save, layers, labels=letters):
 
     generator = DataLoader(dataset, batch_size=batch_size,
-                           shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
+                           shuffle=True, num_workers=2, pin_memory=True, drop_last=False)
     accs = []
     trues = []
     preds = []
@@ -550,7 +553,7 @@ def ConfusionMatrix(dataset, save, layers, labels=letters):
 def NetworkActivity(dataset, layers):
 
     generator = DataLoader(dataset, batch_size=batch_size,
-                           shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
+                           shuffle=True, num_workers=2, pin_memory=True, drop_last=False)
     for x_local, y_local in generator:
         x_local, y_local = x_local.to(device), y_local.to(device)
         with torch.no_grad():
@@ -647,6 +650,7 @@ file_type = 'data_braille_letters_th_'
 file_thr = str(threshold)
 file_name = file_dir_data + file_type + file_thr + '.pkl'
 
+# TODO move this into python file?
 file_dir_params = './parameters/'
 param_filename = 'parameters_th' + str(threshold) + '.txt'
 file_name_parameters = file_dir_params + param_filename
