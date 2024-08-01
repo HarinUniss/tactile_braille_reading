@@ -10,6 +10,7 @@ from matplotlib.gridspec import GridSpec
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset
+from tqdm import tqdm
 
 dtype = torch.float
 
@@ -35,7 +36,14 @@ global use_dropout
 use_dropout = False
 
 global lower_bound
-lower_bound = None  # set to None to disable
+lower_bound = -1.0  # set to None to disable
+global no_synapse
+no_synapse = True
+global use_linear_decay
+use_linear_decay = True
+global ref_per_timesteps
+# refractory period is set in simulation time steps for now; set to None to disable
+ref_per_timesteps = 1
 
 # create folder to safe figures later
 path = './figures'
@@ -175,7 +183,10 @@ def run_snn(inputs, layers):
         h1 = dropout(h1)
     if use_trainable_tc:
         spk_rec, mem_rec = recurrent_layer.compute_activity_tc(
-            bs, nb_hidden, h1, v1, alpha1, beta1, nb_steps, lower_bound)
+            bs, nb_hidden, h1, v1, alpha1, beta1, nb_steps)
+    elif ref_per_timesteps:
+        spk_rec, mem_rec = recurrent_layer.compute_activity(
+            bs, nb_hidden, h1, v1, nb_steps, lower_bound, ref_counter_hidden)
     else:
         spk_rec, mem_rec = recurrent_layer.compute_activity(
             bs, nb_hidden, h1, v1, nb_steps, lower_bound)
@@ -187,6 +198,9 @@ def run_snn(inputs, layers):
     if use_trainable_tc:
         s_out_rec, out_rec = feedforward_layer.compute_activity_tc(
             bs, nb_outputs, h2, alpha2, beta2, nb_steps, lower_bound)
+    elif ref_per_timesteps:
+        s_out_rec, out_rec = feedforward_layer.compute_activity(
+            bs, nb_outputs, h2, nb_steps, lower_bound, ref_counter_readout)
     else:
         s_out_rec, out_rec = feedforward_layer.compute_activity(
             bs, nb_outputs, h2, nb_steps, lower_bound)
@@ -226,9 +240,25 @@ def build_and_train(params, ds_train, ds_test, epochs=epochs):
     if not use_trainable_tc:
         global alpha
         global beta
-    alpha = float(np.exp(-time_step/tau_syn))
-    beta = float(np.exp(-time_step/tau_mem))  # float(1/(0.06/time_step))
-    print("beta %f, time_step %f" % (beta, time_step))
+    if no_synapse:
+        alpha = 0.0  # here we disable synapse dynamics
+    else:
+        alpha = float(np.exp(-time_step/tau_syn))
+
+    if use_linear_decay:
+        beta = 0.005  # 0.05 < 0.01 says how much to lose
+    else:
+        beta = float(np.exp(-time_step/tau_mem))  # says how much to keep
+
+    if ref_per_timesteps:
+        # initialize as many we have layers with the size of each layer
+        global ref_counter_hidden
+        ref_counter_hidden = torch.zeros(
+            (batch_size, nb_hidden), device=device)
+        global ref_counter_readout
+        ref_counter_readout = torch.zeros(
+            (batch_size, nb_outputs), device=device)
+
     fwd_weight_scale = params['fwd_weight_scale']
     rec_weight_scale = fwd_weight_scale*params['weight_scale_factor']
 
@@ -300,13 +330,15 @@ def train(params, dataset, layers, lr=0.0015, nb_epochs=300, dataset_test=None):
     log_softmax_fn = nn.LogSoftmax(dim=1)
     loss_fn = nn.NLLLoss()  # The negative log likelihood loss function
 
-    generator = DataLoader(dataset, batch_size=batch_size,
+    generator = DataLoader(dataset=dataset, batch_size=batch_size, pin_memory=True,
                            shuffle=True, num_workers=2)
 
     # The optimization loop
     loss_hist = []
     accs_hist = [[], []]
-    for e in range(nb_epochs):
+    pbar_training = tqdm(range(nb_epochs), position=0,
+                         total=nb_epochs, leave=True)
+    for _ in pbar_training:
         # learning rate decreases over epochs
         optimizer = torch.optim.Adamax(layers, lr=lr, betas=(0.9, 0.995))
         # if e > nb_epochs/2:
@@ -314,8 +346,19 @@ def train(params, dataset, layers, lr=0.0015, nb_epochs=300, dataset_test=None):
         local_loss = []
         # accs: mean training accuracies for each batch
         accs = []
-        for x_local, y_local in generator:
+        pbar_batches = tqdm(generator, position=1,
+                            total=len(generator), leave=False)
+        for x_local, y_local in pbar_batches:
             x_local, y_local = x_local.to(device), y_local.to(device)
+            # reset refractory period counter for each batch
+            if ref_per_timesteps:
+                # initialize as many we have layers with the size of each layer
+                global ref_counter_hidden
+                ref_counter_hidden = torch.zeros(
+                    (batch_size, nb_hidden), device=device)
+                global ref_counter_readout
+                ref_counter_readout = torch.zeros(
+                    (batch_size, nb_outputs), device=device)
             spks_out, recs, layers_update = run_snn(x_local, layers)
             # [mem_rec, spk_rec, out_rec]
             _, spk_rec, _ = recs
@@ -384,8 +427,8 @@ def train(params, dataset, layers, lr=0.0015, nb_epochs=300, dataset_test=None):
                 for ii in layers_update:
                     best_acc_layers.append(ii.detach().clone())
 
-        print("Epoch {}/{} done. Train accuracy: {:.2f}%, Test accuracy: {:.2f}%, Loss: {:.5f}.".format(
-            e + 1, nb_epochs, accs_hist[0][-1]*100, accs_hist[1][-1]*100, loss_hist[-1]))
+        pbar_training.set_description("{:.2f}%, {:.2f}%, {:.2f}.".format(
+            accs_hist[0][-1]*100, accs_hist[1][-1]*100, loss_hist[-1]))
 
     return loss_hist, accs_hist, best_acc_layers
 
@@ -393,7 +436,7 @@ def train(params, dataset, layers, lr=0.0015, nb_epochs=300, dataset_test=None):
 def compute_classification_accuracy(dataset, layers):
     """ Computes classification accuracy on supplied data in batches. """
 
-    generator = DataLoader(dataset, batch_size=batch_size,
+    generator = DataLoader(dataset=dataset, batch_size=batch_size, pin_memory=True,
                            shuffle=False, num_workers=2)
     accs = []
 
@@ -418,7 +461,7 @@ def compute_classification_accuracy(dataset, layers):
 def plot_confusion_matrix(dataset, layers, labels):
     '''Takes a dataset and the weight matrix to compute the network activity and compare it to the labels.
     Labels are used to write the ticks.'''
-    generator = DataLoader(dataset, batch_size=batch_size,
+    generator = DataLoader(dataset=dataset, batch_size=batch_size, pin_memory=True,
                            shuffle=False, num_workers=2)
     accs = []
     trues = []
@@ -463,7 +506,7 @@ def plot_confusion_matrix(dataset, layers, labels):
 def get_network_activity(dataset, layers):
     '''Takes a dataset and the weight matrix to compute the network activity.'''
 
-    generator = DataLoader(dataset, batch_size=batch_size,
+    generator = DataLoader(dataset=dataset, batch_size=batch_size, pin_memory=True,
                            shuffle=False, num_workers=2)
     for x_local, y_local in generator:
         x_local, y_local = x_local.to(device), y_local.to(device)
@@ -478,7 +521,7 @@ def get_network_activity(dataset, layers):
 
 
 def plot_network_activity(spk_rec, spk_rec3, spks_out, directory='./figures'):
-    nb_plt = 4
+    nb_plt = 1
     gs = GridSpec(1, nb_plt)
 
     # hidden layer
@@ -486,7 +529,6 @@ def plot_network_activity(spk_rec, spk_rec3, spks_out, directory='./figures'):
     for i in range(nb_plt):
         plt.subplot(gs[i])
         tensor_array = spk_rec[i].detach().cpu().numpy().T
-        print(tensor_array.shape)
         plt.imshow(spk_rec[i].detach().cpu().numpy().T,
                    cmap=plt.cm.gray_r, origin="lower")
         if i == 0:
@@ -542,6 +584,13 @@ with open(file_name_parameters) as file:
             params[key] = np.double(value)
 
 
+def update_refractory_perdiod_counter(spk, counter):
+    counter = counter[:spk.shape[0], :spk.shape[1]]
+    counter[counter > 0.0] -= 1
+    counter[spk > 0.0] = ref_per_timesteps
+    return counter
+
+
 class SurrGradSpike(torch.autograd.Function):
     """
     Here we implement our spiking nonlinearity which also implements 
@@ -593,8 +642,10 @@ class feedforward_layer:
         torch.nn.init.normal_(ff_layer, mean=0.0, std=scale/np.sqrt(nb_inputs))
         return ff_layer
 
-    def compute_activity(nb_input, nb_neurons, input_activity, nb_steps, lower_bound=None):
+    def compute_activity(nb_input, nb_neurons, input_activity, nb_steps, lower_bound=None, ref_per_counter=None):
         syn = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
+        new_syn = torch.zeros((nb_input, nb_neurons),
+                              device=device, dtype=dtype)
         mem = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
         out = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
         mem_rec = []
@@ -604,10 +655,22 @@ class feedforward_layer:
         for t in range(nb_steps):
             mthr = mem-1.0
             out = spike_fn(mthr)
-            rst_out = out.detach()
+            rst = out.detach()
 
-            new_syn = alpha*syn + input_activity[:, t]
-            new_mem = (beta*mem + syn)*(1.0-rst_out)
+            # update the correct counter
+            if ref_per_counter is not None:
+                update_refractory_perdiod_counter(rst, ref_per_counter)
+                # take care of last batch
+                mask = ref_per_counter[:syn.shape[0], :syn.shape[1]] == 0.0
+                new_syn[mask] = (alpha*syn[mask] + input_activity[:, t][mask])
+            else:
+                new_syn = alpha*syn + input_activity[:, t]
+
+            if use_linear_decay:
+                # torch.sign returns: 1 if x > 0, -1 if x < 0, and 0 if x == 0
+                new_mem = ((mem-torch.sign(mem)*beta) + syn)*(1.0-rst)
+            else:
+                new_mem = (beta*mem + syn)*(1.0-rst)
 
             if lower_bound:
                 # clamp membrane potential
@@ -635,10 +698,10 @@ class feedforward_layer:
         for t in range(nb_steps):
             mthr = mem-1.0
             out = spike_fn(mthr)
-            rst_out = out.detach()
+            rst = out.detach()
 
             new_syn = torch.abs(alpha)*syn + input_activity[:, t]
-            new_mem = (torch.abs(beta)*mem + syn)*(1.0-rst_out)
+            new_mem = (torch.abs(beta)*mem + syn)*(1.0-rst)
 
             if lower_bound:
                 # clamp membrane potential
@@ -672,10 +735,12 @@ class recurrent_layer:
                               std=rec_scale/np.sqrt(nb_inputs))
         return ff_layer,  rec_layer
 
-    def compute_activity(nb_input, nb_neurons, input_activity, layer, nb_steps, lower_bound=None):
-        syn = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
-        mem = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
-        out = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
+    def compute_activity(batch_size, nb_neurons, input_activity, layer, nb_steps, lower_bound=None, ref_per_counter=None):
+        syn = torch.zeros((batch_size, nb_neurons), device=device, dtype=dtype)
+        new_syn = torch.zeros((batch_size, nb_neurons),
+                              device=device, dtype=dtype)
+        mem = torch.zeros((batch_size, nb_neurons), device=device, dtype=dtype)
+        out = torch.zeros((batch_size, nb_neurons), device=device, dtype=dtype)
         mem_rec = []
         spk_rec = []
 
@@ -687,8 +752,19 @@ class recurrent_layer:
             out = spike_fn(mthr)
             rst = out.detach()  # We do not want to backprop through the reset
 
-            new_syn = alpha*syn + h1
-            new_mem = (beta*mem + syn)*(1.0-rst)
+            if ref_per_counter is not None:
+                update_refractory_perdiod_counter(rst, ref_per_counter)
+                # only update the membrane potential if not in refractory period
+                # take care of last batch
+                mask = ref_per_counter[:syn.shape[0], :syn.shape[1]] == 0.0
+                new_syn[mask] = (alpha*syn[mask] + h1[mask])
+            else:
+                new_syn = alpha*syn + h1
+
+            if use_linear_decay:
+                new_mem = ((mem-torch.sign(mem)*beta) + syn)*(1.0-rst)
+            else:
+                new_mem = (beta*mem + syn)*(1.0-rst)
 
             if lower_bound:
                 # clamp membrane potential
@@ -705,10 +781,10 @@ class recurrent_layer:
         spk_rec = torch.stack(spk_rec, dim=1)
         return spk_rec, mem_rec
 
-    def compute_activity_tc(nb_input, nb_neurons, input_activity, layer, alpha, beta, nb_steps, lower_bound=None):
-        syn = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
-        mem = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
-        out = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
+    def compute_activity_tc(batch_size, nb_neurons, input_activity, layer, alpha, beta, nb_steps, lower_bound=None):
+        syn = torch.zeros((batch_size, nb_neurons), device=device, dtype=dtype)
+        mem = torch.zeros((batch_size, nb_neurons), device=device, dtype=dtype)
+        out = torch.zeros((batch_size, nb_neurons), device=device, dtype=dtype)
         mem_rec = []
         spk_rec = []
 
@@ -761,11 +837,27 @@ ds_train, ds_test, ds_validation, labels, nb_channels, data_steps = load_and_ext
     params, file_name, letter_written=letters)
 for repetition in range(max_repetitions):
     if repetition == 0:
-        print("Number of training data %i" % len(ds_train))
-        print("Number of testing data %i" % len(ds_test))
-        print("Number of validation data %i" % len(ds_validation))
-        print("Number of outputs %i" % len(np.unique(labels)))
-        print("Number of timesteps %i" % data_steps)
+        print("Number of training data %i." % len(ds_train))
+        print("Number of testing data %i." % len(ds_test))
+        print("Number of validation data %i." % len(ds_validation))
+        print("Number of outputs %i." % len(np.unique(labels)))
+        print("Number of timesteps %i." % data_steps)
+        if no_synapse:
+            print(f"No synapse dynamics.")
+        if use_trainable_out:
+            print("Using trainable linear output layer.")
+        if use_trainable_tc:
+            print("Using trainable time constants.")
+        if use_dropout:
+            print("Using dropout during training.")
+        if lower_bound:
+            print(f"Clamp membrane voltage to: {lower_bound}.")
+        if use_linear_decay:
+            print(f"Use linear decay with beta: {beta}.")
+        else:
+            print(f"Use exponential decay with beta: {beta}.")
+        if ref_per_timesteps:
+            print(f"Refractory period set to {ref_per_timesteps} simulation timesteps.")
         print("Input duration %fs" % (data_steps*time_step))
         print("---------------------------\n")
 
@@ -825,8 +917,7 @@ plt.xlabel("Epoch")
 plt.ylabel("Accuracy (%)")
 plt.ylim((0, 105))
 plt.legend(["Training", "Test"], loc='lower right')
-plt.savefig("./figures/rsnn_1layers_train_tc_thr_" +
-            str(threshold)+"_acc.pdf")
+plt.savefig(f"./figures/rsnn_1layers_train_tc_thr_{threshold}_acc.pdf")
 plt.close("all")
 
 # plotting the confusion matrix
@@ -838,5 +929,4 @@ plot_confusion_matrix(dataset=ds_test, layers=very_best_layer, labels=letters)
 spk_rec, spk_rec3, spks_out = get_network_activity(
     ds_test, layers=very_best_layer)
 plot_network_activity(spk_rec, spk_rec3, spks_out, directory='./figures')
-plt.savefig("./figures/rsnn_1layers_train_tc_thr_activity_linear" +
-            str(threshold)+"_acc.pdf")
+plt.savefig(f"./figures/rsnn_1layers_train_tc_thr_activity_linear{threshold}_acc.pdf")
