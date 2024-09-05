@@ -18,13 +18,13 @@ letters = ['Space', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
            'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
 
 # set variables
-use_seed = True
+use_seed = False
 threshold = 2  # possible values are: 1, 2, 5, 10
 # set the number of epochs you want to train the network (default = 300)
 epochs = 50
 
 global batch_size
-batch_size = 128  # 512
+batch_size = 128
 global lr
 lr = 0.0015
 
@@ -44,6 +44,10 @@ use_linear_decay = True
 global ref_per_timesteps
 # refractory period is set in simulation time steps for now; set to None to disable
 ref_per_timesteps = 1
+
+# some options for plotting
+NB_BATCHES_TO_PLOT = 1
+NB_TRIALS_TO_PLOT = 1
 
 # create folder to safe figures later
 path = './figures'
@@ -182,40 +186,40 @@ def run_snn(inputs, layers):
     if use_dropout:
         h1 = dropout(h1)
     if use_trainable_tc:
-        spk_rec, mem_rec = recurrent_layer.compute_activity_tc(
+        spk_rec_hidden, mem_rec_hidden = recurrent_layer.compute_activity_tc(
             bs, nb_hidden, h1, v1, alpha1, beta1, nb_steps)
     elif ref_per_timesteps:
-        spk_rec, mem_rec = recurrent_layer.compute_activity(
+        spk_rec_hidden, mem_rec_hidden = recurrent_layer.compute_activity(
             bs, nb_hidden, h1, v1, nb_steps, lower_bound, ref_counter_hidden)
     else:
-        spk_rec, mem_rec = recurrent_layer.compute_activity(
+        spk_rec_hidden, mem_rec_hidden = recurrent_layer.compute_activity(
             bs, nb_hidden, h1, v1, nb_steps, lower_bound)
 
     # Readout layer
-    h2 = torch.einsum("abc,cd->abd", (spk_rec, w2))
+    h2 = torch.einsum("abc,cd->abd", (spk_rec_hidden, w2))
     if use_dropout:
         h2 = dropout(h2)
     if use_trainable_tc:
-        s_out_rec, out_rec = feedforward_layer.compute_activity_tc(
+        spk_rec_readout, mem_rec_readout = feedforward_layer.compute_activity_tc(
             bs, nb_outputs, h2, alpha2, beta2, nb_steps, lower_bound)
     elif ref_per_timesteps:
-        s_out_rec, out_rec = feedforward_layer.compute_activity(
+        spk_rec_readout, mem_rec_readout = feedforward_layer.compute_activity(
             bs, nb_outputs, h2, nb_steps, lower_bound, ref_counter_readout)
     else:
-        s_out_rec, out_rec = feedforward_layer.compute_activity(
+        spk_rec_readout, mem_rec_readout = feedforward_layer.compute_activity(
             bs, nb_outputs, h2, nb_steps, lower_bound)
 
     if use_trainable_out:
         # trainable output spike scaling
-        # mean_firing_rate = torch.div(torch.sum(s_out_rec,1), s_out_rec.shape[1]) # mean firing rate
-        # s_out_rec = mean_firing_rate*layers[5] + layers[6]
-        s_out_rec = torch.sum(s_out_rec, 1)*out_scale + \
+        # mean_firing_rate = torch.div(torch.sum(spk_rec_readout,1), spk_rec_readout.shape[1]) # mean firing rate
+        # spk_rec_readout = mean_firing_rate*layers[5] + layers[6]
+        spk_rec_readout = torch.sum(spk_rec_readout, 1)*out_scale + \
             out_offset  # sum spikes
 
-    other_recs = [mem_rec, spk_rec, out_rec]
+    other_recs = [mem_rec_hidden, spk_rec_hidden, mem_rec_readout]
     layers_update = layers
 
-    return s_out_rec, other_recs, layers_update
+    return spk_rec_readout, other_recs, layers_update
 
 
 def build_and_train(params, ds_train, ds_test, epochs=epochs):
@@ -336,8 +340,8 @@ def train(params, dataset, layers, lr=0.0015, nb_epochs=300, dataset_test=None):
     # The optimization loop
     loss_hist = []
     accs_hist = [[], []]
-    pbar_training = tqdm(range(nb_epochs), position=0,
-                         total=nb_epochs, leave=True)
+    pbar_training = tqdm(range(nb_epochs), position=1,
+                         total=nb_epochs, leave=False)
     for _ in pbar_training:
         # learning rate decreases over epochs
         optimizer = torch.optim.Adamax(layers, lr=lr, betas=(0.9, 0.995))
@@ -346,7 +350,7 @@ def train(params, dataset, layers, lr=0.0015, nb_epochs=300, dataset_test=None):
         local_loss = []
         # accs: mean training accuracies for each batch
         accs = []
-        pbar_batches = tqdm(generator, position=1,
+        pbar_batches = tqdm(generator, position=2,
                             total=len(generator), leave=False)
         for x_local, y_local in pbar_batches:
             x_local, y_local = x_local.to(device), y_local.to(device)
@@ -359,15 +363,15 @@ def train(params, dataset, layers, lr=0.0015, nb_epochs=300, dataset_test=None):
                 global ref_counter_readout
                 ref_counter_readout = torch.zeros(
                     (batch_size, nb_outputs), device=device)
-            spks_out, recs, layers_update = run_snn(x_local, layers)
-            # [mem_rec, spk_rec, out_rec]
-            _, spk_rec, _ = recs
+            spk_rec_readout, recs, layers_update = run_snn(x_local, layers)
+            # [mem_rec_hidden, spk_rec_hidden, mem_rec_readout]
+            _, spk_rec_hidden, _ = recs
 
             # with output spikes
             if use_trainable_out:
-                m = spks_out
+                m = spk_rec_readout
             else:
-                m = torch.sum(spks_out, 1)  # sum over time
+                m = torch.sum(spk_rec_readout, 1)  # sum over time
             # cross entropy loss on the active read-out layer
             log_p_y = log_softmax_fn(m)
 
@@ -375,17 +379,17 @@ def train(params, dataset, layers, lr=0.0015, nb_epochs=300, dataset_test=None):
             # Here we can set up our regularizer loss
             # reg_loss = params['reg_spikes']*torch.mean(torch.sum(spks1,1)) # L1 loss on spikes per neuron (original)
             # L1 loss on total number of spikes (hidden layer 1)
-            reg_loss = params['reg_spikes']*torch.mean(torch.sum(spk_rec, 1))
+            reg_loss = params['reg_spikes']*torch.mean(torch.sum(spk_rec_hidden, 1))
             # L1 loss on total number of spikes (output layer)
-            # reg_loss += params['reg_spikes']*torch.mean(torch.sum(spks_out, 1))
+            # reg_loss += params['reg_spikes']*torch.mean(torch.sum(spk_rec_readout, 1))
             # print("L1: ", reg_loss)
             # reg_loss += params['reg_neurons']*torch.mean(torch.sum(torch.sum(spks1,dim=0),dim=0)**2) # e.g., L2 loss on total number of spikes (original)
             # L2 loss on spikes per neuron (hidden layer 1)
             reg_loss += params['reg_neurons'] * \
-                torch.mean(torch.sum(torch.sum(spk_rec, dim=0), dim=0)**2)
+                torch.mean(torch.sum(torch.sum(spk_rec_hidden, dim=0), dim=0)**2)
             # L2 loss on spikes per neuron (output layer)
             # reg_loss += params['reg_neurons'] * \
-            #     torch.mean(torch.sum(torch.sum(spks_out, dim=0), dim=0)**2)
+            #     torch.mean(torch.sum(torch.sum(spk_rec_readout, dim=0), dim=0)**2)
             # print("L1 + L2: ", reg_loss)
 
             # Here we combine supervised loss and the regularizer
@@ -443,12 +447,12 @@ def compute_classification_accuracy(dataset, layers):
     for x_local, y_local in generator:
         x_local, y_local = x_local.to(device), y_local.to(device)
         with torch.no_grad():
-            spks_out, _, _ = run_snn(x_local, layers)
+            spk_rec_readout, _, _ = run_snn(x_local, layers)
         # with output spikes
         if use_trainable_out:
-            m = spks_out
+            m = spk_rec_readout
         else:
-            m = torch.sum(spks_out, 1)  # sum over time
+            m = torch.sum(spk_rec_readout, 1)  # sum over time
         _, am = torch.max(m, 1)     # argmax over output units
 
         # compare to labels
@@ -456,6 +460,52 @@ def compute_classification_accuracy(dataset, layers):
         accs.append(tmp)
 
     return np.mean(accs)
+
+
+def plot_training_perfromance(path, acc_train, acc_test, loss_train):
+    """Visualize the training performance."""
+    # calc mean and std
+    acc_mean_train, acc_std_train = np.mean(acc_train, axis=0), np.std(acc_train, axis=0)
+    acc_mean_test, acc_std_test = np.mean(acc_test, axis=0), np.std(acc_test, axis=0)
+    best_trial, best_val_idx = np.where(np.max(acc_test) == acc_test)
+    best_trial, best_val_idx = best_trial[0], best_val_idx[0]
+    loss_train_mean, loss_train_std = np.mean(loss_train, axis=0), np.std(loss_train, axis=0)
+
+    fig = plt.figure(figsize=(8, 12))
+    ax = fig.add_subplot(2, 1, 1)
+    ax.fill_between(range(1, len(acc_mean_train)+1), 100*(acc_mean_train+acc_std_train), 100*(
+        acc_mean_train-acc_std_train), color='cornflowerblue')
+    ax.fill_between(range(1, len(acc_mean_test)+1), 100*(
+        acc_mean_test+acc_std_test), 100*(acc_mean_test-acc_std_test), color='sandybrown')
+    # plot mean and std
+    ax.plot(range(1, len(acc_mean_train)+1),
+            100*np.array(acc_mean_train), color='blue', linestyle='dashed')
+    ax.plot(range(1, len(acc_mean_test)+1), 100 *
+            np.array(acc_mean_test), color='orangered', linestyle='dashed')
+    # highlight best trial
+    ax.plot(range(1, len(acc_train[best_trial])+1), 100*np.array(
+        acc_train[best_trial]), color='blue')
+    ax.plot(range(1, len(acc_test[best_trial])+1), 100*np.array(
+        acc_test[best_trial]), color='orangered')
+    # ax.set_xlabel("Epoch")
+    ax.set_ylabel("Accuracy (%)")
+    ax.set_ylim((0, 105))
+    ax.set_title("Accuracy")
+    ax.legend(["Training std", "Test std", r"$\overline{\mathrm{Training}}$", r"$\overline{\mathrm{Test}}$", "Training @ best test", "Best test"], loc='lower right')
+    
+    ax = fig.add_subplot(2, 1, 2)
+    ax.fill_between(range(1, len(loss_train_mean)+1), loss_train_mean+loss_train_std, loss_train_mean-loss_train_std, color='cornflowerblue')
+    ax.plot(range(1, len(loss_train_mean)+1), loss_train_mean, color='blue', linestyle='dashed')
+    ax.plot(range(1, len(loss_train[best_trial])+1), loss_train[best_trial], color='blue')
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Loss")
+    ax.set_ylim((0, None))
+    ax.legend(["Training std", r"$\overline{\mathrm{Training}}$", "Training loss @ best test"])
+    ax.set_title("Training loss")
+    fig.align_ylabels()
+    fig.tight_layout()
+    fig.savefig(f"{path}.pdf")
+    plt.close(fig)
 
 
 def plot_confusion_matrix(dataset, layers, labels):
@@ -469,12 +519,12 @@ def plot_confusion_matrix(dataset, layers, labels):
     for x_local, y_local in generator:
         x_local, y_local = x_local.to(device), y_local.to(device)
         with torch.no_grad():
-            spks_out, _, _ = run_snn(x_local, layers)
+            spk_rec_readout, _, _ = run_snn(x_local, layers)
         # with output spikes
         if use_trainable_out:
-            m = spks_out
+            m = spk_rec_readout
         else:
-            m = torch.sum(spks_out, 1)  # sum over time
+            m = torch.sum(spk_rec_readout, 1)  # sum over time
         _, am = torch.max(m, 1)     # argmax over output units
         # compare to labels
         tmp = np.mean((y_local == am).detach().cpu().numpy())
@@ -508,61 +558,87 @@ def get_network_activity(dataset, layers):
 
     generator = DataLoader(dataset=dataset, batch_size=batch_size, pin_memory=True,
                            shuffle=False, num_workers=2)
+    accs = []
+    spk_rec_readout_list = []
+    spk_rec_hidden_list = []
     for x_local, y_local in generator:
         x_local, y_local = x_local.to(device), y_local.to(device)
         with torch.no_grad():
-            spks_out, recs, _ = run_snn(x_local, layers)
+            spk_rec_readout, recs, _ = run_snn(x_local, layers)
 
-        # [mem_rec, spk_rec, mem_rec2, spk_rec2, out_rec]
-        spk_rec, spk_rec3, _ = recs
-        # s_out_rec, other_recs, layers_update
+        # [mem_rec_hidden, spk_rec_hidden, mem_rec_readout]
+        _, spk_rec_hidden, _ = recs
+        # spk_rec_readout, other_recs, layers_update
+                # with output spikes
+        if use_trainable_out:
+            m = spk_rec_readout
+        else:
+            m = torch.sum(spk_rec_readout, 1)  # sum over time
+        _, am = torch.max(m, 1)     # argmax over output units
+        # compare to labels
+        tmp = np.mean((y_local == am).detach().cpu().numpy())
+        accs.append(tmp)
+        spk_rec_readout_list.append(spk_rec_readout.detach().cpu().numpy())
+        spk_rec_hidden_list.append(spk_rec_hidden.detach().cpu().numpy())
 
-    return spk_rec, spk_rec3, spks_out
+    return accs, spk_rec_readout_list, spk_rec_hidden_list
 
 
-def plot_network_activity(spk_rec, spk_rec3, spks_out, directory='./figures'):
-    nb_plt = 1
-    gs = GridSpec(1, nb_plt)
+def plot_network_activity(spr_recs, layer_names, figname='./figures'):
+    """
+    Creates raster plots for all layers using matplotlib.eventplot().
+    Input dimension: [timesteps, neurons]
+    """
+    nb_layers = len(layer_names)
+    fig = plt.figure()
+    for counter, name in enumerate(layer_names):
+        # TODO plot hidden layer activity
+        spk_per_layer = spr_recs[counter]
+        num_neurons = spk_per_layer.shape[1]
+        ax = fig.add_subplot(nb_layers, 1, counter+1)
 
-    # hidden layer
-    fig_general_activity = plt.figure(figsize=(7, 10), dpi=150)
-    for i in range(nb_plt):
-        plt.subplot(gs[i])
-        tensor_array = spk_rec[i].detach().cpu().numpy().T
-        plt.imshow(spk_rec[i].detach().cpu().numpy().T,
-                   cmap=plt.cm.gray_r, origin="lower")
-        if i == 0:
-            plt.xlabel("Time")
-            plt.ylabel("Units")
-        sn.despine()
-    plt.title("Hidden layer 1")
-    if use_trainable_out:
-        plt.savefig(
-            f"{directory}/rsnn_1layers_train_tc_output_thr_{threshold}_rp_layer_1.pdf")
-    else:
-        plt.savefig(
-            f"{directory}/rsnn_1layers_train_tc_thr_{threshold}_rp_layer_1.pdf")
+        spikes_per_neuron = []
+        for neuron_idx in range(spk_per_layer.shape[-1]):
+            spk_times_per_neuron = np.where(spk_per_layer[:, neuron_idx])[0]
+            spk_times_per_neuron = spk_times_per_neuron*0.001*int(params['time_bin_size'])
+            spikes_per_neuron.append(spk_times_per_neuron)
+        
+        # # TODO possible optimization
+        # # Find the indices of spikes (value 1)
+        # spike_times, neuron_ids = np.where(spk_per_layer == 1)
+        # # Sort by neuron id and then by spike time
+        # # sorted_indices = np.lexsort((spike_times, neuron_ids))
+        # # # Get the sorted spike times and neuron ids
+        # # sorted_spike_times = spike_times[sorted_indices]  # contains the neuron IDs
+        # # sorted_neuron_ids = neuron_ids[sorted_indices]  # contains the according spike times
+        # # # Group indices by neuron
+        # # spikes_per_neuron = {neuron: sorted_spike_times[sorted_neuron_ids == neuron] for neuron in np.unique(sorted_neuron_ids)}
 
-    # output layer
-    fig_rasterfigures = plt.figure(figsize=(7, 10), dpi=150)
-    for i in range(nb_plt):
-        plt.subplot(gs[i])
-        plt.imshow(spks_out[i].detach().cpu().numpy().T,
-                   cmap=plt.cm.gray_r, origin="lower")
-        if i == 0:
-            plt.xlabel("Time")
-            plt.ylabel("Units")
-        sn.despine()
-    plt.title("Output layer")
+        # # Sort by neuron id and then by spike time
+        # sorted_indices = np.lexsort((spike_times, neuron_ids))
 
-    if use_trainable_out:
-        plt.savefig(
-            f"{directory}/rsnn_1layers_train_tc_output_thr_{threshold}_rp_output_layer.pdf")
-    else:
-        plt.savefig(
-            f"{directory}/rsnn_1layers_train_tc_thr_{threshold}_rp_output_layer.pdf")
+        # # Get the sorted spike times and neuron ids
+        # sorted_spike_times = spike_times[sorted_indices]
+        # sorted_neuron_ids = neuron_ids[sorted_indices]
 
-    return fig_general_activity, fig_rasterfigures
+        # # Get the total number of neurons
+        # num_neurons = spk_per_layer.shape[1]
+
+        # # Include empty lists for neurons with no spikes
+        # spikes_per_neuron = {neuron: sorted_spike_times[sorted_neuron_ids == neuron].tolist() for neuron in range(num_neurons)}
+
+
+        # TODO possible colorcode by nb spikes
+        print(len(spikes_per_neuron))
+        print(len(range(num_neurons)))
+        ax.eventplot(spikes_per_neuron, orientation="horizontal", lineoffsets=range(num_neurons), linewidth=0.3, colors="k")
+        ax.set_ylabel("Neuron ID")
+        ax.set_title(f"{name} activity")
+    ax.set_xlabel("Time [sec]")
+    fig.align_ylabels()
+    fig.tight_layout()
+    fig.savefig(f"{figname}.pdf")
+    plt.close(fig)
 
 
 # Load data and parameters
@@ -831,11 +907,15 @@ class trainable_time_constants:
 
 acc_train_list = []
 acc_test_list = []
-max_repetitions = 1
-# load data
-ds_train, ds_test, ds_validation, labels, nb_channels, data_steps = load_and_extract(
-    params, file_name, letter_written=letters)
-for repetition in range(max_repetitions):
+loss_train_list = []
+max_repetitions = 5
+
+pbar_repetitions = tqdm(range(max_repetitions), position=0, total=max_repetitions, leave=True)
+for repetition in pbar_repetitions:
+    pbar_repetitions.set_description(f"{repetition+1}/{max_repetitions}")
+    # load data for each repetition indepoently to get different splits
+    ds_train, ds_test, ds_validation, labels, nb_channels, data_steps = load_and_extract(
+        params, file_name, letter_written=letters)
     if repetition == 0:
         print("Number of training data %i." % len(ds_train))
         print("Number of testing data %i." % len(ds_test))
@@ -853,9 +933,9 @@ for repetition in range(max_repetitions):
         if lower_bound:
             print(f"Clamp membrane voltage to: {lower_bound}.")
         if use_linear_decay:
-            print(f"Use linear decay with beta: {beta}.")
+            print(f"Use linear decay.")
         else:
-            print(f"Use exponential decay with beta: {beta}.")
+            print(f"Use exponential decay.")
         if ref_per_timesteps:
             print(f"Refractory period set to {ref_per_timesteps} simulation timesteps.")
         print("Input duration %fs" % (data_steps*time_step))
@@ -880,6 +960,11 @@ for repetition in range(max_repetitions):
 
     acc_train_list.append(acc_hist[0])
     acc_test_list.append(acc_hist[1])
+    loss_train_list.append(loss_hist)
+
+acc_train_list = np.array(acc_train_list)
+acc_test_list = np.array(acc_test_list)
+loss_train_list = np.array(loss_train_list)
 
 print("*************************")
 print("* Best: ", best_acc*100)
@@ -890,43 +975,58 @@ print("*************************")
 torch.save(very_best_layer, './model/best_model_th'+str(threshold)+'.pt')
 
 # ### Lets plot the training curve and the confusion matrix
-
-# calc mean and std
-acc_mean_train = np.mean(acc_train_list, axis=0)
-acc_std_train = np.std(acc_train_list, axis=0)
-acc_mean_test = np.mean(acc_test_list, axis=0)
-acc_std_test = np.std(acc_test_list, axis=0)
-best_trial, best_val_idx = np.where(np.max(acc_test_list) == acc_test_list)
-best_trial, best_val_idx = best_trial[0], best_val_idx[0]
-fig1 = plt.figure()
-# plot best trial
-plt.plot(range(1, len(acc_train_list[best_trial])+1), 100*np.array(
-    acc_train_list[best_trial]), color='blue', linestyle='dashed')
-plt.plot(range(1, len(acc_test_list[best_trial])+1), 100*np.array(
-    acc_test_list[best_trial]), color='orangered', linestyle='dashed')
-# plot mean and std
-plt.plot(range(1, len(acc_mean_train)+1),
-         100*np.array(acc_mean_train), color='blue')
-plt.plot(range(1, len(acc_mean_test)+1), 100 *
-         np.array(acc_mean_test), color='orangered')
-plt.fill_between(range(1, len(acc_mean_train)+1), 100*(acc_mean_train+acc_std_train), 100*(
-    acc_mean_train-acc_std_train), color='cornflowerblue')
-plt.fill_between(range(1, len(acc_mean_test)+1), 100*(
-    acc_mean_test+acc_std_test), 100*(acc_mean_test-acc_std_test), color='sandybrown')
-plt.xlabel("Epoch")
-plt.ylabel("Accuracy (%)")
-plt.ylim((0, 105))
-plt.legend(["Training", "Test"], loc='lower right')
-plt.savefig(f"./figures/rsnn_1layers_train_tc_thr_{threshold}_acc.pdf")
-plt.close("all")
-
+plot_training_perfromance(path=f"./figures/rsnn_1layers_train_tc_thr_{threshold}_acc", acc_train=acc_train_list, acc_test=acc_test_list, loss_train=loss_train_list)
 # plotting the confusion matrix
 plot_confusion_matrix(dataset=ds_test, layers=very_best_layer, labels=letters)
 
-# ### Lets create some raster figures
+#####################################
+### Lets create some raster plots ###
+#####################################
 
 # plotting the network activity
-spk_rec, spk_rec3, spks_out = get_network_activity(
-    ds_test, layers=very_best_layer)
-plot_network_activity(spk_rec, spk_rec3, spks_out, directory='./figures')
-plt.savefig(f"./figures/rsnn_1layers_train_tc_thr_activity_linear{threshold}_acc.pdf")
+accs, spk_rec_readout_array, spk_rec_hidden_array = get_network_activity(ds_test, layers=very_best_layer)
+# 
+layer_names = ["Hidden layer", "Readout layer"]
+nb_layers = len(layer_names)
+
+total_nb_batches = len(accs)
+
+# select the batches to plot
+if NB_BATCHES_TO_PLOT > total_nb_batches:
+    print(f"WARNING: Not enough batches to plot. Will plot all {total_nb_batches} batches instead of the asked {NB_BATCHES_TO_PLOT}. Lower the number to avoid this warning.")
+    batch_selection = range(NB_BATCHES_TO_PLOT)
+elif NB_BATCHES_TO_PLOT == total_nb_batches:
+    print(f"Plotting all {total_nb_batches} batches.")
+    batch_selection = range(NB_BATCHES_TO_PLOT)
+else:
+    print(f"Plotting {NB_BATCHES_TO_PLOT} random batches (out of {total_nb_batches}).")
+    found_unique = False
+    while not found_unique:
+        batch_selection = np.random.choice(total_nb_batches, NB_BATCHES_TO_PLOT)
+        if len(np.unique(batch_selection)) == NB_BATCHES_TO_PLOT:
+            found_unique = True
+
+for batch_idx in batch_selection:
+    batch_acc = accs[batch_idx]
+    spk_rec_readout_batch = spk_rec_readout_array[batch_idx]  # [trials, timesteps, neurons]
+    spk_rec_hidden_batch = spk_rec_hidden_array[batch_idx]  # [trials, timesteps, neurons]
+    # select random trials to plot
+    total_nb_trials = len(spk_rec_readout_batch)
+    if NB_TRIALS_TO_PLOT > total_nb_trials:
+        print(f"WARNING: Not enough trials to plot. Will plot all {total_nb_trials} trials instead of the asked {NB_TRIALS_TO_PLOT}. Lower the number to avoid this warning.")
+        trial_selection = range(NB_BATCHES_TO_PLOT)
+    elif NB_TRIALS_TO_PLOT == total_nb_trials:
+        print(f"Plotting all {total_nb_trials} trials.")
+        trial_selection = range(NB_TRIALS_TO_PLOT)
+    else:
+        print(f"Plotting {NB_TRIALS_TO_PLOT} random trials (out of {total_nb_trials}).")
+        found_unique = False
+        while not found_unique:
+            trial_selection = np.random.choice(total_nb_trials, NB_TRIALS_TO_PLOT)
+            if len(np.unique(trial_selection)) == NB_TRIALS_TO_PLOT:
+                found_unique = True
+
+    for trial_idx in trial_selection:
+        spr_recs = [spk_rec_hidden_batch[trial_idx], spk_rec_readout_batch[trial_idx]]
+        # TODO include more specifics into the figure name
+        plot_network_activity(spr_recs, layer_names, figname=f'./figures/network_activity_batch_{batch_idx}_trial_{trial_idx}')
