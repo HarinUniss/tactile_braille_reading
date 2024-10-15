@@ -904,129 +904,129 @@ class trainable_time_constants:
             beta, mean=beta_mean, std=beta_mean/10)
         return alpha, beta
 
+if __name__ == '__main__':
+    acc_train_list = []
+    acc_test_list = []
+    loss_train_list = []
+    max_repetitions = 5
 
-acc_train_list = []
-acc_test_list = []
-loss_train_list = []
-max_repetitions = 5
+    pbar_repetitions = tqdm(range(max_repetitions), position=0, total=max_repetitions, leave=True)
+    for repetition in pbar_repetitions:
+        pbar_repetitions.set_description(f"{repetition+1}/{max_repetitions}")
+        # load data for each repetition indepoently to get different splits
+        ds_train, ds_test, ds_validation, labels, nb_channels, data_steps = load_and_extract(
+            params, file_name, letter_written=letters)
+        if repetition == 0:
+            print("Number of training data %i." % len(ds_train))
+            print("Number of testing data %i." % len(ds_test))
+            print("Number of validation data %i." % len(ds_validation))
+            print("Number of outputs %i." % len(np.unique(labels)))
+            print("Number of timesteps %i." % data_steps)
+            if no_synapse:
+                print(f"No synapse dynamics.")
+            if use_trainable_out:
+                print("Using trainable linear output layer.")
+            if use_trainable_tc:
+                print("Using trainable time constants.")
+            if use_dropout:
+                print("Using dropout during training.")
+            if lower_bound:
+                print(f"Clamp membrane voltage to: {lower_bound}.")
+            if use_linear_decay:
+                print(f"Use linear decay.")
+            else:
+                print(f"Use exponential decay.")
+            if ref_per_timesteps:
+                print(f"Refractory period set to {ref_per_timesteps} simulation timesteps.")
+            print("Input duration %fs" % (data_steps*time_step))
+            print("---------------------------\n")
 
-pbar_repetitions = tqdm(range(max_repetitions), position=0, total=max_repetitions, leave=True)
-for repetition in pbar_repetitions:
-    pbar_repetitions.set_description(f"{repetition+1}/{max_repetitions}")
-    # load data for each repetition indepoently to get different splits
-    ds_train, ds_test, ds_validation, labels, nb_channels, data_steps = load_and_extract(
-        params, file_name, letter_written=letters)
-    if repetition == 0:
-        print("Number of training data %i." % len(ds_train))
-        print("Number of testing data %i." % len(ds_test))
-        print("Number of validation data %i." % len(ds_validation))
-        print("Number of outputs %i." % len(np.unique(labels)))
-        print("Number of timesteps %i." % data_steps)
-        if no_synapse:
-            print(f"No synapse dynamics.")
-        if use_trainable_out:
-            print("Using trainable linear output layer.")
-        if use_trainable_tc:
-            print("Using trainable time constants.")
-        if use_dropout:
-            print("Using dropout during training.")
-        if lower_bound:
-            print(f"Clamp membrane voltage to: {lower_bound}.")
-        if use_linear_decay:
-            print(f"Use linear decay.")
-        else:
-            print(f"Use exponential decay.")
-        if ref_per_timesteps:
-            print(f"Refractory period set to {ref_per_timesteps} simulation timesteps.")
-        print("Input duration %fs" % (data_steps*time_step))
-        print("---------------------------\n")
+        # initialize and train network
+        loss_hist, acc_hist, best_layers = build_and_train(
+            params, ds_train, ds_test, epochs=epochs)
 
-    # initialize and train network
-    loss_hist, acc_hist, best_layers = build_and_train(
-        params, ds_train, ds_test, epochs=epochs)
+        # get validation results
+        val_acc = compute_classification_accuracy(
+            dataset=ds_validation, layers=best_layers)
 
-    # get validation results
-    val_acc = compute_classification_accuracy(
-        dataset=ds_validation, layers=best_layers)
-
-    # safe overall best layer
-    if repetition == 0:
-        very_best_layer = best_layers
-        best_acc = val_acc
-    else:
-        if val_acc > best_acc:
+        # safe overall best layer
+        if repetition == 0:
             very_best_layer = best_layers
             best_acc = val_acc
+        else:
+            if val_acc > best_acc:
+                very_best_layer = best_layers
+                best_acc = val_acc
 
-    acc_train_list.append(acc_hist[0])
-    acc_test_list.append(acc_hist[1])
-    loss_train_list.append(loss_hist)
+        acc_train_list.append(acc_hist[0])
+        acc_test_list.append(acc_hist[1])
+        loss_train_list.append(loss_hist)
 
-acc_train_list = np.array(acc_train_list)
-acc_test_list = np.array(acc_test_list)
-loss_train_list = np.array(loss_train_list)
+    acc_train_list = np.array(acc_train_list)
+    acc_test_list = np.array(acc_test_list)
+    loss_train_list = np.array(loss_train_list)
 
-print("*************************")
-print("* Best: ", best_acc*100)
-print("*************************")
+    print("*************************")
+    print("* Best: ", best_acc*100)
+    print("*************************")
 
 
-# save the best layer
-torch.save(very_best_layer, './model/best_model_th'+str(threshold)+'.pt')
+    # save the best layer
+    torch.save(very_best_layer, './model/best_model_th'+str(threshold)+'.pt')
 
-# ### Lets plot the training curve and the confusion matrix
-plot_training_perfromance(path=f"./figures/rsnn_1layers_train_tc_thr_{threshold}_acc", acc_train=acc_train_list, acc_test=acc_test_list, loss_train=loss_train_list)
-# plotting the confusion matrix
-plot_confusion_matrix(dataset=ds_test, layers=very_best_layer, labels=letters)
+    # ### Lets plot the training curve and the confusion matrix
+    plot_training_perfromance(path=f"./figures/rsnn_1layers_train_tc_thr_{threshold}_acc", acc_train=acc_train_list, acc_test=acc_test_list, loss_train=loss_train_list)
+    # plotting the confusion matrix
+    plot_confusion_matrix(dataset=ds_test, layers=very_best_layer, labels=letters)
 
-#####################################
-### Lets create some raster plots ###
-#####################################
+    #####################################
+    ### Lets create some raster plots ###
+    #####################################
 
-# plotting the network activity
-accs, spk_rec_readout_array, spk_rec_hidden_array = get_network_activity(ds_test, layers=very_best_layer)
-# 
-layer_names = ["Hidden layer", "Readout layer"]
-nb_layers = len(layer_names)
+    # plotting the network activity
+    accs, spk_rec_readout_array, spk_rec_hidden_array = get_network_activity(ds_test, layers=very_best_layer)
+    # 
+    layer_names = ["Hidden layer", "Readout layer"]
+    nb_layers = len(layer_names)
 
-total_nb_batches = len(accs)
+    total_nb_batches = len(accs)
 
-# select the batches to plot
-if NB_BATCHES_TO_PLOT > total_nb_batches:
-    print(f"WARNING: Not enough batches to plot. Will plot all {total_nb_batches} batches instead of the asked {NB_BATCHES_TO_PLOT}. Lower the number to avoid this warning.")
-    batch_selection = range(NB_BATCHES_TO_PLOT)
-elif NB_BATCHES_TO_PLOT == total_nb_batches:
-    print(f"Plotting all {total_nb_batches} batches.")
-    batch_selection = range(NB_BATCHES_TO_PLOT)
-else:
-    print(f"Plotting {NB_BATCHES_TO_PLOT} random batches (out of {total_nb_batches}).")
-    found_unique = False
-    while not found_unique:
-        batch_selection = np.random.choice(total_nb_batches, NB_BATCHES_TO_PLOT)
-        if len(np.unique(batch_selection)) == NB_BATCHES_TO_PLOT:
-            found_unique = True
-
-for batch_idx in batch_selection:
-    batch_acc = accs[batch_idx]
-    spk_rec_readout_batch = spk_rec_readout_array[batch_idx]  # [trials, timesteps, neurons]
-    spk_rec_hidden_batch = spk_rec_hidden_array[batch_idx]  # [trials, timesteps, neurons]
-    # select random trials to plot
-    total_nb_trials = len(spk_rec_readout_batch)
-    if NB_TRIALS_TO_PLOT > total_nb_trials:
-        print(f"WARNING: Not enough trials to plot. Will plot all {total_nb_trials} trials instead of the asked {NB_TRIALS_TO_PLOT}. Lower the number to avoid this warning.")
-        trial_selection = range(NB_BATCHES_TO_PLOT)
-    elif NB_TRIALS_TO_PLOT == total_nb_trials:
-        print(f"Plotting all {total_nb_trials} trials.")
-        trial_selection = range(NB_TRIALS_TO_PLOT)
+    # select the batches to plot
+    if NB_BATCHES_TO_PLOT > total_nb_batches:
+        print(f"WARNING: Not enough batches to plot. Will plot all {total_nb_batches} batches instead of the asked {NB_BATCHES_TO_PLOT}. Lower the number to avoid this warning.")
+        batch_selection = range(NB_BATCHES_TO_PLOT)
+    elif NB_BATCHES_TO_PLOT == total_nb_batches:
+        print(f"Plotting all {total_nb_batches} batches.")
+        batch_selection = range(NB_BATCHES_TO_PLOT)
     else:
-        print(f"Plotting {NB_TRIALS_TO_PLOT} random trials (out of {total_nb_trials}).")
+        print(f"Plotting {NB_BATCHES_TO_PLOT} random batches (out of {total_nb_batches}).")
         found_unique = False
         while not found_unique:
-            trial_selection = np.random.choice(total_nb_trials, NB_TRIALS_TO_PLOT)
-            if len(np.unique(trial_selection)) == NB_TRIALS_TO_PLOT:
+            batch_selection = np.random.choice(total_nb_batches, NB_BATCHES_TO_PLOT)
+            if len(np.unique(batch_selection)) == NB_BATCHES_TO_PLOT:
                 found_unique = True
 
-    for trial_idx in trial_selection:
-        spr_recs = [spk_rec_hidden_batch[trial_idx], spk_rec_readout_batch[trial_idx]]
-        # TODO include more specifics into the figure name
-        plot_network_activity(spr_recs, layer_names, figname=f'./figures/network_activity_batch_{batch_idx}_trial_{trial_idx}')
+    for batch_idx in batch_selection:
+        batch_acc = accs[batch_idx]
+        spk_rec_readout_batch = spk_rec_readout_array[batch_idx]  # [trials, timesteps, neurons]
+        spk_rec_hidden_batch = spk_rec_hidden_array[batch_idx]  # [trials, timesteps, neurons]
+        # select random trials to plot
+        total_nb_trials = len(spk_rec_readout_batch)
+        if NB_TRIALS_TO_PLOT > total_nb_trials:
+            print(f"WARNING: Not enough trials to plot. Will plot all {total_nb_trials} trials instead of the asked {NB_TRIALS_TO_PLOT}. Lower the number to avoid this warning.")
+            trial_selection = range(NB_BATCHES_TO_PLOT)
+        elif NB_TRIALS_TO_PLOT == total_nb_trials:
+            print(f"Plotting all {total_nb_trials} trials.")
+            trial_selection = range(NB_TRIALS_TO_PLOT)
+        else:
+            print(f"Plotting {NB_TRIALS_TO_PLOT} random trials (out of {total_nb_trials}).")
+            found_unique = False
+            while not found_unique:
+                trial_selection = np.random.choice(total_nb_trials, NB_TRIALS_TO_PLOT)
+                if len(np.unique(trial_selection)) == NB_TRIALS_TO_PLOT:
+                    found_unique = True
+
+        for trial_idx in trial_selection:
+            spr_recs = [spk_rec_hidden_batch[trial_idx], spk_rec_readout_batch[trial_idx]]
+            # TODO include more specifics into the figure name
+            plot_network_activity(spr_recs, layer_names, figname=f'./figures/network_activity_batch_{batch_idx}_trial_{trial_idx}')
