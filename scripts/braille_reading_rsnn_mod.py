@@ -6,7 +6,7 @@ import pandas as pd
 import seaborn as sn
 import torch
 import torch.nn as nn
-from matplotlib.gridspec import GridSpec
+from matplotlib.gridspec import GridSpec  # can be used for nice subplot layout
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset
@@ -27,13 +27,6 @@ global batch_size
 batch_size = 128
 global lr
 lr = 0.0015
-
-global use_trainable_out
-use_trainable_out = False
-global use_trainable_tc
-use_trainable_tc = False
-global use_dropout
-use_dropout = False
 
 global lower_bound
 lower_bound = -1.0  # set to None to disable
@@ -102,13 +95,13 @@ else:
 
 def load_and_extract(params, file_name, taxels=None, letter_written=letters):
 
-    max_time = int(51*25)  # ms
-    time_bin_size = int(params['time_bin_size'])  # ms
+    max_time = int(1275)  # ms
+    time_bin_size = int(params['time_bin_size'])  # so far from laoded file, but can be set manually here
     global time
     time = range(0, max_time, time_bin_size)
 
     global time_step
-    time_step = time_bin_size*0.001
+    time_step = time_bin_size*0.001  # ms
     data_steps = len(time)
 
     data_dict = pd.read_pickle(file_name)
@@ -165,30 +158,14 @@ def load_and_extract(params, file_name, taxels=None, letter_written=letters):
 
 def run_snn(inputs, layers):
 
-    if use_trainable_out and use_trainable_tc:
-        w1, w2, v1, alpha1, beta1, alpha2, beta2, out_scale, out_offset = layers
-    elif use_trainable_tc:
-        w1, w2, v1, alpha1, beta1, alpha2, beta2 = layers
-    elif use_trainable_out:
-        w1, w2, v1, out_scale, out_offset = layers
-    else:
-        w1, w2, v1 = layers
-    if use_dropout:
-        dropout = nn.Dropout(p=0.25)  # using dropout on n % of spikes
-    if use_trainable_tc:
-        alpha1, beta1 = torch.abs(alpha1), torch.abs(beta1)
-        alpha2, beta2 = torch.abs(alpha2), torch.abs(beta2)
+    w1, w2, v1 = layers
 
     bs = inputs.shape[0]
 
     h1 = torch.einsum(
         "abc,cd->abd", (inputs.tile((nb_input_copies,)), w1))
-    if use_dropout:
-        h1 = dropout(h1)
-    if use_trainable_tc:
-        spk_rec_hidden, mem_rec_hidden = recurrent_layer.compute_activity_tc(
-            bs, nb_hidden, h1, v1, alpha1, beta1, nb_steps)
-    elif ref_per_timesteps:
+
+    if ref_per_timesteps:
         spk_rec_hidden, mem_rec_hidden = recurrent_layer.compute_activity(
             bs, nb_hidden, h1, v1, nb_steps, lower_bound, ref_counter_hidden)
     else:
@@ -197,24 +174,13 @@ def run_snn(inputs, layers):
 
     # Readout layer
     h2 = torch.einsum("abc,cd->abd", (spk_rec_hidden, w2))
-    if use_dropout:
-        h2 = dropout(h2)
-    if use_trainable_tc:
-        spk_rec_readout, mem_rec_readout = feedforward_layer.compute_activity_tc(
-            bs, nb_outputs, h2, alpha2, beta2, nb_steps, lower_bound)
-    elif ref_per_timesteps:
+
+    if ref_per_timesteps:
         spk_rec_readout, mem_rec_readout = feedforward_layer.compute_activity(
             bs, nb_outputs, h2, nb_steps, lower_bound, ref_counter_readout)
     else:
         spk_rec_readout, mem_rec_readout = feedforward_layer.compute_activity(
             bs, nb_outputs, h2, nb_steps, lower_bound)
-
-    if use_trainable_out:
-        # trainable output spike scaling
-        # mean_firing_rate = torch.div(torch.sum(spk_rec_readout,1), spk_rec_readout.shape[1]) # mean firing rate
-        # spk_rec_readout = mean_firing_rate*layers[5] + layers[6]
-        spk_rec_readout = torch.sum(spk_rec_readout, 1)*out_scale + \
-            out_offset  # sum spikes
 
     other_recs = [mem_rec_hidden, spk_rec_hidden, mem_rec_readout]
     layers_update = layers
@@ -241,9 +207,9 @@ def build_and_train(params, ds_train, ds_test, epochs=epochs):
     tau_mem = params['tau_mem']  # ms
     tau_syn = tau_mem/params['tau_ratio']
 
-    if not use_trainable_tc:
-        global alpha
-        global beta
+    global alpha
+    global beta
+
     if no_synapse:
         alpha = 0.0  # here we disable synapse dynamics
     else:
@@ -277,29 +243,7 @@ def build_and_train(params, ds_train, ds_test, epochs=epochs):
     w2 = feedforward_layer.create_layer(
         nb_hidden, nb_outputs, fwd_weight_scale)
 
-    if use_trainable_tc:
-        # time constants
-        alpha1, beta1 = trainable_time_constants.create_time_constants(
-            nb_hidden, alpha, beta, use_trainable_tc)
-
-        alpha2, beta2 = trainable_time_constants.create_time_constants(
-            nb_outputs, alpha, beta, use_trainable_tc)
-
     layers.append(w1), layers.append(w2), layers.append(v1)
-    if use_trainable_tc:
-        layers.append(alpha1), layers.append(
-            beta1), layers.append(alpha2), layers.append(beta2)
-
-    if use_trainable_out:
-        # include trainable output for readout layer (linear: y = out_scale * x + out_offset)
-        out_scale = torch.empty(
-            (nb_outputs),  device=device, dtype=dtype, requires_grad=True)
-        torch.nn.init.ones_(out_scale)
-        layers.append(out_scale)
-        out_offset = torch.empty(
-            (nb_outputs),  device=device, dtype=dtype, requires_grad=True)
-        torch.nn.init.zeros_(out_offset)
-        layers.append(out_offset)
 
     # a fixed learning rate is already defined within the train function, that's why here it is omitted
     loss_hist, accs_hist, best_layers = train(
@@ -364,18 +308,13 @@ def train(params, dataset, layers, lr=0.0015, nb_epochs=300, dataset_test=None):
                 ref_counter_readout = torch.zeros(
                     (batch_size, nb_outputs), device=device)
             spk_rec_readout, recs, layers_update = run_snn(x_local, layers)
-            # [mem_rec_hidden, spk_rec_hidden, mem_rec_readout]
+            
             _, spk_rec_hidden, _ = recs
+            m = torch.sum(spk_rec_readout, 1)  # sum over time
 
-            # with output spikes
-            if use_trainable_out:
-                m = spk_rec_readout
-            else:
-                m = torch.sum(spk_rec_readout, 1)  # sum over time
             # cross entropy loss on the active read-out layer
             log_p_y = log_softmax_fn(m)
 
-            # TODO change to loop!
             # Here we can set up our regularizer loss
             # reg_loss = params['reg_spikes']*torch.mean(torch.sum(spks1,1)) # L1 loss on spikes per neuron (original)
             # L1 loss on total number of spikes (hidden layer 1)
@@ -418,7 +357,6 @@ def train(params, dataset, layers, lr=0.0015, nb_epochs=300, dataset_test=None):
                 dataset=dataset_test, layers=layers_update)
             accs_hist[1].append(test_acc)  # only safe best test
 
-        if dataset_test is None:
             # save best training
             if mean_accs >= np.max(accs_hist[0]):
                 best_acc_layers = []
@@ -448,11 +386,9 @@ def compute_classification_accuracy(dataset, layers):
         x_local, y_local = x_local.to(device), y_local.to(device)
         with torch.no_grad():
             spk_rec_readout, _, _ = run_snn(x_local, layers)
+
         # with output spikes
-        if use_trainable_out:
-            m = spk_rec_readout
-        else:
-            m = torch.sum(spk_rec_readout, 1)  # sum over time
+        m = torch.sum(spk_rec_readout, 1)  # sum over time
         _, am = torch.max(m, 1)     # argmax over output units
 
         # compare to labels
@@ -520,12 +456,11 @@ def plot_confusion_matrix(dataset, layers, labels):
         x_local, y_local = x_local.to(device), y_local.to(device)
         with torch.no_grad():
             spk_rec_readout, _, _ = run_snn(x_local, layers)
+
         # with output spikes
-        if use_trainable_out:
-            m = spk_rec_readout
-        else:
-            m = torch.sum(spk_rec_readout, 1)  # sum over time
+        m = torch.sum(spk_rec_readout, 1)  # sum over time
         _, am = torch.max(m, 1)     # argmax over output units
+
         # compare to labels
         tmp = np.mean((y_local == am).detach().cpu().numpy())
         accs.append(tmp)
@@ -545,11 +480,7 @@ def plot_confusion_matrix(dataset, layers, labels):
     plt.xlabel('\nPredicted')
     plt.ylabel('True\n')
     plt.xticks(rotation=0)
-    if use_trainable_out:
-        plt.savefig(
-            f"./figures/rsnn_1layers_train_tc_output_optimized_thr_{threshold}_cm.pdf")
-    else:
-        plt.savefig(
+    plt.savefig(
             f"./figures/rsnn_1layers_train_tc_thr_{threshold}_cm.pdf")
 
 
@@ -566,15 +497,12 @@ def get_network_activity(dataset, layers):
         with torch.no_grad():
             spk_rec_readout, recs, _ = run_snn(x_local, layers)
 
-        # [mem_rec_hidden, spk_rec_hidden, mem_rec_readout]
         _, spk_rec_hidden, _ = recs
-        # spk_rec_readout, other_recs, layers_update
-                # with output spikes
-        if use_trainable_out:
-            m = spk_rec_readout
-        else:
-            m = torch.sum(spk_rec_readout, 1)  # sum over time
+        
+        # with output spikes
+        m = torch.sum(spk_rec_readout, 1)  # sum over time
         _, am = torch.max(m, 1)     # argmax over output units
+
         # compare to labels
         tmp = np.mean((y_local == am).detach().cpu().numpy())
         accs.append(tmp)
@@ -763,38 +691,6 @@ class feedforward_layer:
         spk_rec = torch.stack(spk_rec, dim=1)
         return spk_rec, mem_rec
 
-    def compute_activity_tc(nb_input, nb_neurons, input_activity, alpha, beta, nb_steps, lower_bound=None):
-        syn = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
-        mem = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
-        out = torch.zeros((nb_input, nb_neurons), device=device, dtype=dtype)
-        mem_rec = []
-        spk_rec = []
-
-        # Compute feedforward layer activity
-        for t in range(nb_steps):
-            mthr = mem-1.0
-            out = spike_fn(mthr)
-            rst = out.detach()
-
-            new_syn = torch.abs(alpha)*syn + input_activity[:, t]
-            new_mem = (torch.abs(beta)*mem + syn)*(1.0-rst)
-
-            if lower_bound:
-                # clamp membrane potential
-                new_mem[new_mem < lower_bound] = lower_bound
-
-            mem_rec.append(mem)
-            spk_rec.append(out)
-
-            mem = new_mem
-            syn = new_syn
-
-        # Now we merge the recorded membrane potentials into a single tensor
-        mem_rec = torch.stack(mem_rec, dim=1)
-        spk_rec = torch.stack(spk_rec, dim=1)
-        return spk_rec, mem_rec
-
-
 class recurrent_layer:
     '''
     class to initialize and compute spiking recurrent layer
@@ -856,53 +752,7 @@ class recurrent_layer:
         mem_rec = torch.stack(mem_rec, dim=1)
         spk_rec = torch.stack(spk_rec, dim=1)
         return spk_rec, mem_rec
-
-    def compute_activity_tc(batch_size, nb_neurons, input_activity, layer, alpha, beta, nb_steps, lower_bound=None):
-        syn = torch.zeros((batch_size, nb_neurons), device=device, dtype=dtype)
-        mem = torch.zeros((batch_size, nb_neurons), device=device, dtype=dtype)
-        out = torch.zeros((batch_size, nb_neurons), device=device, dtype=dtype)
-        mem_rec = []
-        spk_rec = []
-
-        # Compute recurrent layer activity
-        for t in range(nb_steps):
-            # input activity plus last step output activity
-            h1 = input_activity[:, t] + torch.einsum("ab,bc->ac", (out, layer))
-            mthr = mem-1.0
-            out = spike_fn(mthr)
-            rst = out.detach()  # We do not want to backprop through the reset
-
-            new_syn = torch.abs(alpha)*syn + h1
-            new_mem = (torch.abs(beta)*mem + syn)*(1.0-rst)
-
-            if lower_bound:
-                # clamp membrane potential
-                new_mem[new_mem < lower_bound] = lower_bound
-
-            mem_rec.append(mem)
-            spk_rec.append(out)
-
-            mem = new_mem
-            syn = new_syn
-
-        # Now we merge the recorded membrane potentials into a single tensor
-        mem_rec = torch.stack(mem_rec, dim=1)
-        spk_rec = torch.stack(spk_rec, dim=1)
-        return spk_rec, mem_rec
-
-
-class trainable_time_constants:
-    def create_time_constants(nb_neurons, alpha_mean, beta_mean, trainable):
-        alpha = torch.empty((nb_neurons),  device=device,
-                            dtype=dtype, requires_grad=trainable)
-        torch.nn.init.normal_(
-            alpha, mean=alpha_mean, std=alpha_mean/10)
-
-        beta = torch.empty((nb_neurons),  device=device,
-                           dtype=dtype, requires_grad=trainable)
-        torch.nn.init.normal_(
-            beta, mean=beta_mean, std=beta_mean/10)
-        return alpha, beta
+    
 
 if __name__ == '__main__':
     acc_train_list = []
@@ -924,12 +774,6 @@ if __name__ == '__main__':
             print("Number of timesteps %i." % data_steps)
             if no_synapse:
                 print(f"No synapse dynamics.")
-            if use_trainable_out:
-                print("Using trainable linear output layer.")
-            if use_trainable_tc:
-                print("Using trainable time constants.")
-            if use_dropout:
-                print("Using dropout during training.")
             if lower_bound:
                 print(f"Clamp membrane voltage to: {lower_bound}.")
             if use_linear_decay:
