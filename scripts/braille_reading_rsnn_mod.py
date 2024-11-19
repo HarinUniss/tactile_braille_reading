@@ -14,8 +14,10 @@ from tqdm import tqdm
 
 dtype = torch.float
 
-letters = ['Space', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
-           'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
+# letters = ['Space', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
+#            'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
+
+letters = ['Space', 'A', 'B', 'C']  # put here the letters you want to train on
 
 # set variables
 use_seed = False
@@ -131,8 +133,9 @@ def load_and_extract(params, file_name, taxels=None, letter_written=letters):
             events_array = np.reshape(np.transpose(
                 events_array, (1, 0, 2)), (events_array.shape[1], -1))
             selected_chans = 2*nchan
-        data.append(events_array)
-        labels.append(letter_written.index(data_dict['letter'][i]))
+        if data_dict['letter'][i] in letter_written:
+            data.append(events_array)
+            labels.append(letter_written.index(data_dict['letter'][i]))
 
     # return data,labels
     data = np.array(data)
