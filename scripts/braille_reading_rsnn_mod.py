@@ -1,5 +1,5 @@
 import os
-
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'true'
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
