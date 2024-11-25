@@ -21,7 +21,7 @@ dtype = torch.float
 # letters = ['Space', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
 #            'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
 
-letters = ['Space', 'A', 'B', 'C']  # put here the letters you want to train on
+letters = ['Space', 'A', 'B', 'C', 'D', 'E']  # put here the letters you want to train on
 
 # set variables
 use_seed = True
