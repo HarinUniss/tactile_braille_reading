@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sn
 import torch
-import torch.nn as nn
+import torch.nn as nn  
 from matplotlib.gridspec import GridSpec  # can be used for nice subplot layout
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
@@ -21,19 +21,20 @@ dtype = torch.float
 # letters = ['Space', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
 #            'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
 
-letters = ['Space', 'A', 'B', 'C', 'D', 'E']  # put here the letters you want to train on
+letters = ['Space', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
+           'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']  # put here the letters you want to train on
 
 # set variables
 use_seed = True
 threshold = 2  # possible values are: 1, 2, 5, 10
 # set the number of epochs you want to train the network (default = 300)
-epochs = 100
+epochs = 100 # CHANGED EPOCHS 100 to 10 
 
 global batch_size
-batch_size = 10
+batch_size = 10 #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< BATCH SIZE
 
 global lr
-lr = 0.00005
+lr = 0.0001  #<<<<<<<<<<<<<<<<<<<<<<<<<< LEARNING RATE  CAMBIATO 
 print("Learning rate: ",lr)
 global gamma
 gamma = 0.3
@@ -281,7 +282,7 @@ def build_and_train(params, ds_train, ds_test, epochs=epochs):
     global nb_outputs
     nb_outputs = len(np.unique(labels))
     global nb_hidden
-    nb_hidden = 450
+    nb_hidden = 550 #<<<<<<<<<<<<<<<<<<<<<<<HIDEN NEURONS
     global nb_steps
     nb_steps = data_steps
 
@@ -874,6 +875,12 @@ if __name__ == '__main__':
         print("* Best: ", best_acc*100)
         print("*************************")
 
+
+        # Crea la directory model se non esiste (DA MODIFICARE PERCORSO IN BASE AL PROPRIO PC E SISTEMA OPERATIVO)
+        # model_path = 'D:/slarz/Github/tactile_braille_reading-fenel-sl/model'
+        model_path = './model'
+        if not os.path.exists(model_path):
+            os.makedirs(model_path)
 
         # save the best layer
         torch.save(very_best_layer, './model/best_model_th'+str(threshold)+'.pt')
