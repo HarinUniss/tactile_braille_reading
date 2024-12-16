@@ -1,0 +1,724 @@
+Learning rate:  0.0008 None
+Using device: cuda:0 None None
+Seed set to 42 None None
+Number of training data 3780. None None
+Number of testing data 1085. None None
+Number of validation data 535. None None
+Number of outputs 27. None None
+Number of timesteps 1275. None None
+No synapse dynamics. None None
+Clamp membrane voltage to: -1.0. None None
+Use exponential decay. None None
+Refractory period set to 1 simulation timesteps. None None
+Input duration 1.275000s None None
+---------------------------
+ None None
+Learning rate:  0.0008 None
+Using device: cuda:0 None None
+Seed set to 42 None None
+Number of training data 3780. None None
+Number of testing data 1085. None None
+Number of validation data 535. None None
+Number of outputs 27. None None
+Number of timesteps 1275. None None
+No synapse dynamics. None None
+Clamp membrane voltage to: -1.0. None None
+Use exponential decay. None None
+Refractory period set to 1 simulation timesteps. None None
+Input duration 1.275000s None None
+---------------------------
+ None None
+['tau_mem: ', 0.06, 'tau_mem recurrent: ', 0.06, 'tau trace out: ', 0.06, 'tau trace: ', 0.06] None None
+Learning rate:  0.0008 None
+Using device: cuda:0 None None
+Seed set to 42 None None
+Learning rate:  0.0008 None
+Using device: cuda:0 None None
+Seed set to 42 None None
+Learning rate:  0.0008 None
+Using device: cuda:0 None None
+Seed set to 42 None None
+Learning rate:  0.0008 None
+Using device: cuda:0 None None
+Seed set to 42 None None
+Learning rate:  0.0008 None
+Using device: cuda:0 None None
+Seed set to 42 None None
+Number of training data 3780. None None
+Number of testing data 1085. None None
+Number of validation data 535. None None
+Number of outputs 27. None None
+Number of timesteps 1275. None None
+No synapse dynamics. None None
+Clamp membrane voltage to: -1.0. None None
+Use exponential decay. None None
+Refractory period set to 1 simulation timesteps. None None
+Input duration 1.275000s None None
+---------------------------
+ None None
+['tau_mem: ', 0.06, 'tau_mem recurrent: ', 0.06, 'tau trace out: ', 0.06, 'tau trace: ', 0.06] None None
+Learning rate:  0.0008 None
+Using device: cuda:0 None None
+Seed set to 42 None None
+Learning rate:  0.0008 None
+Using device: cuda:0 None None
+Seed set to 42 None None
+Learning rate:  0.0008 None
+Using device: cuda:0 None None
+Seed set to 42 None None
+Learning rate:  0.0008 None
+Using device: cuda:0 None None
+Seed set to 42 None None
+Test acc:  22.328042328042326 Train acc
+Learning rate:  0.0008 None
+Learning rate:  0.0008 None
+Using device: cuda:0 None None
+Using device: cuda:0 None None
+Seed set to 42 None None
+Seed set to 42 None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Number of training data 3780. None None None None
+Number of testing data 1085. None None None None
+Number of validation data 535. None None None None
+Number of outputs 27. None None None None
+Number of timesteps 1275. None None None None
+No synapse dynamics. None None None None
+Clamp membrane voltage to: -1.0. None None None None
+Use exponential decay. None None None None
+Refractory period set to 1 simulation timesteps. None None None None
+Input duration 1.275000s None None None None
+---------------------------
+ None None None None
+['tau_mem: ', 0.06, 'tau_mem recurrent: ', 0.06, 'tau trace out: ', 0.06, 'tau trace: ', 0.06] None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  22.328042328042326 Train acc 30.14705882352941 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  37.46031746031746 Train acc 43.01470588235294 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  44.17989417989418 Train acc 42.830882352941174 None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  49.788359788359784 Train acc 47.24264705882353 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  53.51851851851852 Train acc 49.17279411764706 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  55.7936507936508 Train acc 51.10294117647059 None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  57.698412698412696 Train acc 53.30882352941176 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  60.55555555555555 Train acc 55.88235294117647 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  62.98941798941799 Train acc 55.88235294117647 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  64.76190476190476 Train acc 58.91544117647059 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  65.21164021164022 Train acc 55.51470588235294 None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  67.77777777777779 Train acc 58.18014705882353 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  68.994708994709 Train acc 56.89338235294118 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  70.05291005291005 Train acc 59.466911764705884 None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  71.71957671957672 Train acc 61.94852941176471 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  72.43386243386244 Train acc 61.39705882352941 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  71.66666666666667 Train acc 60.47794117647059 None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  74.04761904761905 Train acc 62.86764705882353 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  73.88888888888889 Train acc 61.58088235294118 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  74.41798941798942 Train acc 58.63970588235294 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  76.32275132275133 Train acc 61.029411764705884 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  76.37566137566138 Train acc 61.12132352941176 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  76.29629629629629 Train acc 61.029411764705884 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  77.4074074074074 Train acc 63.14338235294118 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  78.75661375661376 Train acc 64.79779411764706 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  78.70370370370371 Train acc 62.86764705882353 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  78.41269841269842 Train acc 57.44485294117647 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  80.0 Train acc 62.68382352941176 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  78.91534391534391 Train acc 65.07352941176471 None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  80.87301587301587 Train acc 62.5 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  80.60846560846561 Train acc 63.32720588235294 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  80.87301587301587 Train acc 64.33823529411765 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  81.45502645502646 Train acc 62.95955882352941 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  81.03174603174604 Train acc 63.87867647058824 None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Test acc:  81.95767195767196 Train acc 65.16544117647058 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  82.27513227513228 Train acc 64.98161764705883 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  83.65079365079366 Train acc 66.08455882352942 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  83.25396825396825 Train acc 68.56617647058823 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  82.56613756613757 Train acc 66.36029411764706 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  83.28042328042328 Train acc 63.60294117647059 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  81.85185185185185 Train acc 65.34926470588235 None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  84.47089947089947 Train acc 67.55514705882352 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  83.67724867724867 Train acc 66.17647058823529 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  84.04761904761905 Train acc 66.91176470588235 None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  83.91534391534393 Train acc 64.15441176470588 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  84.36507936507937 Train acc 64.70588235294117 None
+Learning rate:  0.0008 None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  85.13227513227514 Train acc 67.27941176470588 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None
+Test acc:  83.3862433862434 Train acc 68.47426470588235 None
+Learning rate:  0.0008 None None None
+Using device: cuda:0 None None None None
+Learning rate:  0.0008 None None None
+Seed set to 42 None None None None
+Using device: cuda:0 None None None None
+Seed set to 42 None None None None

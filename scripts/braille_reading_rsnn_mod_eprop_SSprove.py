@@ -12,9 +12,15 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 import torch.nn.functional as F
+from ipdb import set_trace as st
 
 torch.cuda.empty_cache()  # Svuota la cache della memoria CUDA
 torch.set_default_dtype(torch.float64)
+
+def psave(topsave1,topsave2=None,topsave3=None,topsave4=None,topsave5=None):
+    print(topsave1,topsave2,topsave3,topsave4,topsave5)
+    with open('output.txt', 'a') as f:
+        print(topsave1,topsave2,topsave3,topsave4,topsave5, file=f)
 
 dtype = torch.float
 
@@ -28,11 +34,11 @@ threshold = 2  # possible values are: 1, 2, 5, 10
 epochs = 100
 
 global batch_size
-batch_size = 10
+batch_size = 4  
 
 global lr
 lr = 0.0008
-print("Learning rate: ",lr)
+psave("Learning rate: ",lr)
 global gamma
 gamma = 0.3
 
@@ -58,7 +64,7 @@ if not isExist:
     os.makedirs(path)
 
 device = torch.device("cuda:0")  ##### <<<< ATTENZIONE PER PC A SASSARI IMPOSTARE cuda:0 ALTROVE cuda:1
-print(f"Using device: {device}") #### <<<<< print per poter verificare se stiamo usando la GPU corretta 
+psave(f"Using device: {device}") #### <<<<< psave per poter verificare se stiamo usando la GPU corretta 
 
 # use fixed seed for reproducable results
 if use_seed:
@@ -66,9 +72,9 @@ if use_seed:
     os.environ['PYTHONHASHSEED'] = str(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    print("Seed set to {}".format(seed))
+    psave("Seed set to {}".format(seed))
 else:
-    print("Shuffle data randomly")
+    psave("Shuffle data randomly")
 
 
 def load_and_extract(params, file_name, taxels=None, letter_written=letters):
@@ -119,7 +125,7 @@ def load_and_extract(params, file_name, taxels=None, letter_written=letters):
     #one_hot_encoded = np.eye(len(np.unique(labels)))[labels]
     #output = np.repeat(one_hot_encoded[:, np.newaxis, :], data_steps+1, axis=1)
 
-    # print(labels)
+    # psave(labels)
     data = torch.tensor(data, dtype=dtype)
     labels = torch.tensor(labels, dtype=torch.long)
 
@@ -223,7 +229,7 @@ def run_snn(inputs, layers, trainable, yt = None):
     if(trainable):
         _, am = torch.max(n_spike, 2)
         yo = torch.nn.functional.one_hot(am, num_classes=len(np.unique(labels)))
-        #print(yo.shape, yt.shape)
+        #psave(yo.shape, yt.shape)
         grads_batch(inputs.tile((nb_input_copies,)).permute(1,0,2), yo.permute(1,0,2), yt, gamma, 1, mem_rec_hidden.permute(1,0,2), spk_rec_hidden.permute(1,0,2), w1, v1, w2)
 
     return spk_rec_readout, other_recs, layers_update
@@ -233,7 +239,7 @@ def build_and_train(params, ds_train, ds_test, epochs=epochs):
 
     global nb_input_copies
     # Num of spiking neurons used to encode each channel
-    nb_input_copies = 1 #params['nb_input_copies']
+    nb_input_copies = params['nb_input_copies']
 
     # Network parameters
     global nb_inputs
@@ -253,7 +259,7 @@ def build_and_train(params, ds_train, ds_test, epochs=epochs):
     global tau_trace_out
     tau_trace_out = 0.06
     tau_syn = tau_mem/params['tau_ratio']
-    print("tau_mem: ", tau_mem, "tau_mem recurrent: ", tau_mem_rec, "tau trace out: ", tau_trace_out, "tau trace: ", tau_trace)
+    psave(["tau_mem: ", tau_mem, "tau_mem recurrent: ", tau_mem_rec, "tau trace out: ", tau_trace_out, "tau trace: ", tau_trace])
     global alpha
     global beta
     global beta_rec
@@ -314,12 +320,12 @@ def build_and_train(params, ds_train, ds_test, epochs=epochs):
     acc_train_at_best_test = accs_hist[0][idx_best_test]*100
 
     # TODO track time constants!!!
-    print("Final results: ")
-    print("Best training accuracy: {:.2f}% and according test accuracy: {:.2f}% at epoch: {}".format(
+    psave("Final results: ")
+    psave("Best training accuracy: {:.2f}% and according test accuracy: {:.2f}% at epoch: {}".format(
         acc_best_train, acc_test_at_best_train, idx_best_train+1))
-    print("Best test accuracy: {:.2f}% and according train accuracy: {:.2f}% at epoch: {}".format(
+    psave("Best test accuracy: {:.2f}% and according train accuracy: {:.2f}% at epoch: {}".format(
         acc_best_test, acc_train_at_best_test, idx_best_test+1))
-    print("------------------------------------------------------------------------------------\n")
+    psave("------------------------------------------------------------------------------------\n")
 
     return loss_hist, accs_hist, best_layers
 
@@ -377,7 +383,7 @@ def train(params, dataset, layers, lr=0.0015, nb_epochs=300, dataset_test=None):
             reg_loss = params['reg_spikes']*torch.mean(torch.sum(spk_rec_hidden, 1))
             # L1 loss on total number of spikes (output layer)
             # reg_loss += params['reg_spikes']*torch.mean(torch.sum(spk_rec_readout, 1))
-            # print("L1: ", reg_loss)
+            # psave("L1: ", reg_loss)
             # reg_loss += params['reg_neurons']*torch.mean(torch.sum(torch.sum(spks1,dim=0),dim=0)**2) # e.g., L2 loss on total number of spikes (original)
             # L2 loss on spikes per neuron (hidden layer 1)
             reg_loss += params['reg_neurons'] * \
@@ -385,7 +391,7 @@ def train(params, dataset, layers, lr=0.0015, nb_epochs=300, dataset_test=None):
             # L2 loss on spikes per neuron (output layer)
             # reg_loss += params['reg_neurons'] * \
             #     torch.mean(torch.sum(torch.sum(spk_rec_readout, dim=0), dim=0)**2)
-            # print("L1 + L2: ", reg_loss)
+            # psave("L1 + L2: ", reg_loss)
 
             # Here we combine supervised loss and the regularizer
             loss_val = loss_fn(log_p_y, y_local) + reg_loss
@@ -425,7 +431,7 @@ def train(params, dataset, layers, lr=0.0015, nb_epochs=300, dataset_test=None):
 
         pbar_training.set_description("{:.2f}%, {:.2f}%, {:.2f}.".format(
             accs_hist[0][-1]*100, accs_hist[1][-1]*100, loss_hist[-1]))
-        print("Test acc: ", accs_hist[0][-1]*100, "Train acc", accs_hist[1][-1]*100)
+        psave("Test acc: ", accs_hist[0][-1]*100, "Train acc", accs_hist[1][-1]*100)
     return loss_hist, accs_hist, best_acc_layers
 
 
@@ -448,7 +454,7 @@ def compute_classification_accuracy(dataset, layers):
         # compare to labels
         tmp = np.mean((y_local == am).detach().cpu().numpy())
         accs.append(tmp)
-    #print("Test mean accuracy", np.mean(accs))
+    #psave("Test mean accuracy", np.mean(accs))
     return np.mean(accs)
 
 
@@ -611,8 +617,8 @@ def plot_network_activity(spr_recs, layer_names, figname='./figures'):
 
 
         # TODO possible colorcode by nb spikes
-        print(len(spikes_per_neuron))
-        print(len(range(num_neurons)))
+        psave(len(spikes_per_neuron))
+        psave(len(range(num_neurons)))
         ax.eventplot(spikes_per_neuron, orientation="horizontal", lineoffsets=range(num_neurons), linewidth=0.3, colors="k")
         ax.set_ylabel("Neuron ID")
         ax.set_title(f"{name} activity")
@@ -794,23 +800,23 @@ if __name__ == '__main__':
             ds_train, ds_test, ds_validation, labels, nb_channels, data_steps = load_and_extract(
                 params, file_name, letter_written=letters)
             if repetition == 0:
-                print("Number of training data %i." % len(ds_train))
-                print("Number of testing data %i." % len(ds_test))
-                print("Number of validation data %i." % len(ds_validation))
-                print("Number of outputs %i." % len(np.unique(labels)))
-                print("Number of timesteps %i." % data_steps)
+                psave("Number of training data %i." % len(ds_train))
+                psave("Number of testing data %i." % len(ds_test))
+                psave("Number of validation data %i." % len(ds_validation))
+                psave("Number of outputs %i." % len(np.unique(labels)))
+                psave("Number of timesteps %i." % data_steps)
                 if no_synapse:
-                    print(f"No synapse dynamics.")
+                    psave(f"No synapse dynamics.")
                 if lower_bound:
-                    print(f"Clamp membrane voltage to: {lower_bound}.")
+                    psave(f"Clamp membrane voltage to: {lower_bound}.")
                 if use_linear_decay:
-                    print(f"Use linear decay.")
+                    psave(f"Use linear decay.")
                 else:
-                    print(f"Use exponential decay.")
+                    psave(f"Use exponential decay.")
                 if ref_per_timesteps:
-                    print(f"Refractory period set to {ref_per_timesteps} simulation timesteps.")
-                print("Input duration %fs" % (data_steps*time_step))
-                print("---------------------------\n")
+                    psave(f"Refractory period set to {ref_per_timesteps} simulation timesteps.")
+                psave("Input duration %fs" % (data_steps*time_step))
+                psave("---------------------------\n")
 
             # initialize and train network
             loss_hist, acc_hist, best_layers = build_and_train(
@@ -837,12 +843,13 @@ if __name__ == '__main__':
         acc_test_list = np.array(acc_test_list)
         loss_train_list = np.array(loss_train_list)
 
-        print("*************************")
-        print("* Best: ", best_acc*100)
-        print("*************************")
+        psave("*************************")
+        psave("* Best: ", best_acc*100)
+        psave("*************************")
 
 
         # save the best layer
+        st()
         torch.save(very_best_layer, './model/best_model_th'+str(threshold)+'.pt')
 
         # ### Lets plot the training curve and the confusion matrix
@@ -864,13 +871,13 @@ if __name__ == '__main__':
 
         # select the batches to plot
         if NB_BATCHES_TO_PLOT > total_nb_batches:
-            print(f"WARNING: Not enough batches to plot. Will plot all {total_nb_batches} batches instead of the asked {NB_BATCHES_TO_PLOT}. Lower the number to avoid this warning.")
+            psave(f"WARNING: Not enough batches to plot. Will plot all {total_nb_batches} batches instead of the asked {NB_BATCHES_TO_PLOT}. Lower the number to avoid this warning.")
             batch_selection = range(NB_BATCHES_TO_PLOT)
         elif NB_BATCHES_TO_PLOT == total_nb_batches:
-            print(f"Plotting all {total_nb_batches} batches.")
+            psave(f"Plotting all {total_nb_batches} batches.")
             batch_selection = range(NB_BATCHES_TO_PLOT)
         else:
-            print(f"Plotting {NB_BATCHES_TO_PLOT} random batches (out of {total_nb_batches}).")
+            psave(f"Plotting {NB_BATCHES_TO_PLOT} random batches (out of {total_nb_batches}).")
             found_unique = False
             while not found_unique:
                 batch_selection = np.random.choice(total_nb_batches, NB_BATCHES_TO_PLOT)
@@ -884,13 +891,13 @@ if __name__ == '__main__':
             # select random trials to plot
             total_nb_trials = len(spk_rec_readout_batch)
             if NB_TRIALS_TO_PLOT > total_nb_trials:
-                print(f"WARNING: Not enough trials to plot. Will plot all {total_nb_trials} trials instead of the asked {NB_TRIALS_TO_PLOT}. Lower the number to avoid this warning.")
+                psave(f"WARNING: Not enough trials to plot. Will plot all {total_nb_trials} trials instead of the asked {NB_TRIALS_TO_PLOT}. Lower the number to avoid this warning.")
                 trial_selection = range(NB_BATCHES_TO_PLOT)
             elif NB_TRIALS_TO_PLOT == total_nb_trials:
-                print(f"Plotting all {total_nb_trials} trials.")
+                psave(f"Plotting all {total_nb_trials} trials.")
                 trial_selection = range(NB_TRIALS_TO_PLOT)
             else:
-                print(f"Plotting {NB_TRIALS_TO_PLOT} random trials (out of {total_nb_trials}).")
+                psave(f"Plotting {NB_TRIALS_TO_PLOT} random trials (out of {total_nb_trials}).")
                 found_unique = False
                 while not found_unique:
                     trial_selection = np.random.choice(total_nb_trials, NB_TRIALS_TO_PLOT)

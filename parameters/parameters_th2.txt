@@ -1,6 +1,6 @@
 scale 15
-time_bin_size 3
-nb_input_copies 8
+time_bin_size 1
+nb_input_copies 4
 tau_mem 0.05
 tau_ratio 10
 fwd_weight_scale 1
