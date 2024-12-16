@@ -1,11 +1,11 @@
 import os
-
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'true'
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sn
 import torch
-import torch.nn as nn
+import torch.nn as nn  
 from matplotlib.gridspec import GridSpec  # can be used for nice subplot layout
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
@@ -14,25 +14,27 @@ from tqdm import tqdm
 import torch.nn.functional as F
 
 torch.cuda.empty_cache()  # Svuota la cache della memoria CUDA
-torch.set_default_dtype(torch.float64)
+
 
 dtype = torch.float
 
+# letters = ['Space', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
+#            'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
+
 letters = ['Space', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
-           'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
+           'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']  # put here the letters you want to train on
 
 # set variables
 use_seed = True
 threshold = 2  # possible values are: 1, 2, 5, 10
 # set the number of epochs you want to train the network (default = 300)
-epochs = 100
+epochs = 100 # CHANGED EPOCHS 100 to 10 
 
 global batch_size
-batch_size = 10
+batch_size = 10 #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< BATCH SIZE
 
 global lr
-lr = 0.0008
-# lr = 0.002
+lr = 0.00005  #<<<<<<<<<<<<<<<<<<<<<<<<<< LEARNING RATE 
 print("Learning rate: ",lr)
 global gamma
 gamma = 0.3
@@ -58,9 +60,37 @@ isExist = os.path.exists(path)
 if not isExist:
     os.makedirs(path)
 
-device = torch.device("cuda:0")  ##### <<<< ATTENZIONE PER PC A SASSARI IMPOSTARE cuda:0 ALTROVE cuda:1
-print(f"Using device: {device}") #### <<<<< print per poter verificare se stiamo usando la GPU corretta 
-#device = torch.device("cuda:1")
+# check for available GPU and distribute work
+if torch.cuda.device_count() > 1:
+    torch.cuda.empty_cache()
+
+    gpu_sel = 1
+    gpu_av = [torch.cuda.is_available()
+              for ii in range(torch.cuda.device_count())]
+    print("Detected {} GPUs. The load will be shared.".format(
+        torch.cuda.device_count()))
+    for gpu in range(len(gpu_av)):
+        if True in gpu_av:
+            if gpu_av[gpu_sel]:
+                device = torch.device("cuda:"+str(gpu))
+                torch.cuda.set_per_process_memory_fraction(0.5, device=device)
+                print("Selected GPUs: {}" .format("cuda:"+str(gpu)))
+            else:
+                device = torch.device("cuda:"+str(gpu_av.index(True)))
+        else:
+            device = torch.device("cpu")
+            print("No GPU detected. Running on CPU.")
+else:
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+        print("Single GPU detected. Setting up the simulation there.")
+        device = torch.device("cuda:0")
+        # torch.cuda.set_per_process_memory_fraction(0.5, device=device)
+    else:
+        device = torch.device("cpu")
+        print("No GPU detected. Running on CPU.")
+
 
 # use fixed seed for reproducable results
 if use_seed:
@@ -71,7 +101,6 @@ if use_seed:
     print("Seed set to {}".format(seed))
 else:
     print("Shuffle data randomly")
-
 
 def load_and_extract(params, file_name, taxels=None, letter_written=letters):
 
@@ -87,13 +116,22 @@ def load_and_extract(params, file_name, taxels=None, letter_written=letters):
 
     data_dict = pd.read_pickle(file_name)
 
+    # Filter data to include only the specified letters
+    mask = [data_dict['letter'][i] in letter_written for i in range(len(data_dict['letter']))]
+    filtered_events = [e for e, m in zip(data_dict['events'], mask) if m]
+    filtered_letters = [l for l, m in zip(data_dict['letter'], mask) if m]
+
+
+    #Create a new DataFrame filtered_data_dict which contains only the events and labels filtered according to the letters list. 
+    filtered_data_dict = pd.DataFrame({'events': filtered_events, 'letter': filtered_letters})
+
     # Extract data
     data = []
     labels = []
     bins = 1000  # ms conversion
-    nchan = len(data_dict['events'][1])  # number of channels per sensor
+    nchan = len(filtered_data_dict['events'][1])  # number of channels per sensor
     # loop over all trials
-    for i, sample in enumerate(data_dict['events']):
+    for i, sample in enumerate(filtered_data_dict['events']):
         events_array = np.zeros(
             [nchan, round((max_time/time_bin_size)+0.5), 2])
         # loop over sensors (taxel)
@@ -113,7 +151,7 @@ def load_and_extract(params, file_name, taxels=None, letter_written=letters):
                 events_array, (1, 0, 2)), (events_array.shape[1], -1))
             selected_chans = 2*nchan
         data.append(events_array)
-        labels.append(letter_written.index(data_dict['letter'][i]))
+        labels.append(letter_written.index(filtered_data_dict['letter'][i]))
 
     # return data,labels
     data = np.array(data)
@@ -139,6 +177,7 @@ def load_and_extract(params, file_name, taxels=None, letter_written=letters):
 
     return ds_train, ds_test, ds_validation, labels, selected_chans, data_steps
 
+
 def grads_batch(x, yo, yt, gamma, thr, v, z, w_in, w_rec, w_out):
     if w_in.grad is None:
         w_in.grad = torch.zeros_like(w_in)
@@ -153,8 +192,8 @@ def grads_batch(x, yo, yt, gamma, thr, v, z, w_in, w_rec, w_out):
     err = torch.zeros_like(yo)
 
     # Eligibility traces convolution
-    beta_conv     = torch.tensor([beta_trace_out ** (data_steps - i - 1) for i in range(data_steps)]).float().view(1, 1, -1).to(device)
-    beta_rec_conv = torch.tensor([beta_trace ** (data_steps - i - 1) for i in range(data_steps)]).float().view(1, 1, -1).to(device)
+    beta_conv     = torch.tensor([beta ** (data_steps - i - 1) for i in range(data_steps)]).float().view(1, 1, -1).to(device)
+    beta_rec_conv = torch.tensor([beta_rec ** (data_steps - i - 1) for i in range(data_steps)]).float().view(1, 1, -1).to(device)
 
     # Convoluzione Input eligibility traces
     trace_in = F.conv1d(x.permute(1, 2, 0), beta_rec_conv.expand(nb_inputs, -1, -1), padding=data_steps, groups=nb_inputs)[:, :, 1:data_steps+1]
@@ -188,8 +227,8 @@ def grads_batch(x, yo, yt, gamma, thr, v, z, w_in, w_rec, w_out):
     L = torch.einsum('tbo,or->brt', err, w_out)
 
     # Weight gradient updates
-    w_in.grad += torch.sum(L.unsqueeze(2).expand(-1, -1, nb_inputs, -1) * trace_in, dim=(0, 3))
-    w_rec.grad += torch.sum(L.unsqueeze(2).expand(-1, -1, nb_hidden, -1) * trace_rec, dim=(0, 3))
+    w_in.grad += 0.5 * torch.sum(L.unsqueeze(2).expand(-1, -1, nb_inputs, -1) * trace_in, dim=(0, 3))
+    w_rec.grad += 0.5 * torch.sum(L.unsqueeze(2).expand(-1, -1, nb_hidden, -1) * trace_rec, dim=(0, 3))
     w_out.grad += torch.einsum('tbo,brt->or', err, trace_out)
 
 
@@ -243,24 +282,18 @@ def build_and_train(params, ds_train, ds_test, epochs=epochs):
     global nb_outputs
     nb_outputs = len(np.unique(labels))
     global nb_hidden
-    nb_hidden = 450
+    nb_hidden = 900 #<<<<<<<<<<<<<<<<<<<<<<<HIDEN NEURONS
     global nb_steps
     nb_steps = data_steps
 
-    tau_mem = 0.06 #params['tau_mem']  # ms
+    tau_mem = params['tau_mem']  # ms
     global tau_mem_rec
-    tau_mem_rec = 0.06 #params['tau_mem'] #ms
-    global tau_trace
-    tau_trace = 0.06
-    global tau_trace_out
-    tau_trace_out = 0.06
+    tau_mem_rec = 2.0
     tau_syn = tau_mem/params['tau_ratio']
-    print("tau_mem: ", tau_mem, "tau_mem recurrent: ", tau_mem_rec, "tau trace out: ", tau_trace_out, "tau trace: ", tau_trace)
+
     global alpha
     global beta
     global beta_rec
-    global beta_trace
-    global beta_trace_out
     if no_synapse:
         alpha = 0.0  # here we disable synapse dynamics
     else:
@@ -271,8 +304,7 @@ def build_and_train(params, ds_train, ds_test, epochs=epochs):
     else:
         beta = float(np.exp(-time_step/tau_mem))  # says how much to keep
         beta_rec = float(np.exp(-time_step/tau_mem_rec))  # says how much to keep
-        beta_trace = float(np.exp(-time_step/tau_trace))
-        beta_trace_out = float(np.exp(-time_step/tau_trace_out))
+
     if ref_per_timesteps:
         # initialize as many we have layers with the size of each layer
         global ref_counter_hidden
@@ -687,7 +719,7 @@ class feedforward_layer:
                 update_refractory_perdiod_counter(rst, ref_per_counter)
                 # take care of last batch
                 mask = ref_per_counter[:syn.shape[0], :syn.shape[1]] == 0.0
-                new_syn = alpha * syn
+                new_syn = alpha*syn
                 new_syn[mask] = (alpha*syn[mask] + input_activity[:, t][mask])
             else:
                 new_syn = alpha*syn + input_activity[:, t]
@@ -756,7 +788,7 @@ class recurrent_layer:
                 # only update the membrane potential if not in refractory period
                 # take care of last batch
                 mask = ref_per_counter[:syn.shape[0], :syn.shape[1]] == 0.0
-                new_syn = alpha * syn
+                new_syn = alpha*syn
                 new_syn[mask] = (alpha*syn[mask] + h1[mask])
             else:
                 new_syn = alpha*syn + h1
@@ -844,6 +876,12 @@ if __name__ == '__main__':
         print("*************************")
 
 
+        # Crea la directory model se non esiste (DA MODIFICARE PERCORSO IN BASE AL PROPRIO PC E SISTEMA OPERATIVO)
+        # model_path = 'D:/slarz/Github/tactile_braille_reading-fenel-sl/model'
+        model_path = './model'
+        if not os.path.exists(model_path):
+            os.makedirs(model_path)
+
         # save the best layer
         torch.save(very_best_layer, './model/best_model_th'+str(threshold)+'.pt')
 
@@ -903,4 +941,3 @@ if __name__ == '__main__':
                 spr_recs = [spk_rec_hidden_batch[trial_idx], spk_rec_readout_batch[trial_idx]]
                 # TODO include more specifics into the figure name
                 plot_network_activity(spr_recs, layer_names, figname=f'./figures/network_activity_batch_{batch_idx}_trial_{trial_idx}')
-

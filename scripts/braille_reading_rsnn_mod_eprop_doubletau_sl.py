@@ -35,6 +35,7 @@ batch_size = 10 #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< BATCH SIZE
 
 global lr
 lr = 0.00005  #<<<<<<<<<<<<<<<<<<<<<<<<<< LEARNING RATE 
+# lr = 0.0001  #<<<<<<<<<<<<<<<<<<<<<<<<<< LEARNING RATE  CAMBIATO 
 print("Learning rate: ",lr)
 global gamma
 gamma = 0.3
@@ -282,7 +283,9 @@ def build_and_train(params, ds_train, ds_test, epochs=epochs):
     global nb_outputs
     nb_outputs = len(np.unique(labels))
     global nb_hidden
-    nb_hidden = 450#<<<<<<<<<<<<<<<<<<<<<<<HIDEN NEURONS
+    # nb_hidden = 450#<<<<<<<<<<<<<<<<<<<<<<<HIDEN NEURONS
+    #nb_hidden = 900
+    #nb_hidden = 550 #<<<<<<<<<<<<<<<<<<<<<<<HIDEN NEURONS
     global nb_steps
     nb_steps = data_steps
 

@@ -1,5 +1,5 @@
 import os
-
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'true'  
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -203,7 +203,7 @@ def build_and_train(params, ds_train, ds_test, epochs=epochs):
     global nb_outputs
     nb_outputs = len(np.unique(labels))
     global nb_hidden
-    nb_hidden = 450
+    nb_hidden = 900
     global nb_steps
     nb_steps = data_steps
 
